@@ -1,4 +1,4 @@
-export type EditorTool = 'pixel' | 'line' | 'rect' | 'eraser';
+export type EditorTool = 'pixel' | 'line' | 'rect' | 'fill' | 'eraser';
 
 export type MirrorMode = 'none' | 'horizontal' | 'vertical' | 'both';
 

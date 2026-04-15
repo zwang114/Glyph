@@ -7,6 +7,7 @@ interface PanelDef {
   height: number;
   color: string;
   title: string;
+  shape?: 'rect' | 'pen' | 'ticket';
   children: React.ReactNode;
 }
 
@@ -16,17 +17,61 @@ interface PhysicsPanelsProps {
   containerHeight: number;
 }
 
+const PEN_TIP_HEIGHT = 82;
+
+/**
+ * Build the pen-outline path for a panel of width `w` and height `h`.
+ * Tip height is fixed at PEN_TIP_HEIGHT (82px); the straight body section
+ * between the shoulders and the rounded bottom corners grows with `h`.
+ * Modeled on the user-provided SVG at 222x211:
+ * M222 202.139 C222 206.557 218.418 210.139 214 210.139 H8 C3.582 210.139 0 206.557 0 202.139
+ * V82.235 C0 79.663 1.236 77.248 3.322 75.744 L106.322 1.510
+ * C109.116 -0.503 112.884 -0.503 115.678 1.510 L218.678 75.744
+ * C220.764 77.248 222 79.663 222 82.235 V202.139 Z
+ */
+// Ticket/card shape with side notches (from user-provided SVG at 222x175,
+// notches centered at y=103).
+const TICKET_SVG_PATH = "M214.412 111.011C218.639 111.225 222 114.72 222 119V167C222 171.418 218.418 175 214 175H8C3.58172 175 0 171.418 0 167V119C0 114.72 3.36114 111.225 7.58789 111.011L8.41211 110.989C12.6389 110.775 16 107.28 16 103C16 98.7199 12.6389 95.2252 8.41211 95.0107L7.58789 94.9893C3.36114 94.7748 1.79435e-07 91.2801 0 87V8C0 3.58172 3.58172 1.04692e-07 8 0H214C218.418 0 222 3.58172 222 8V87C222 91.2801 218.639 94.7748 214.412 94.9893L213.588 95.0107C209.361 95.2252 206 98.7199 206 103C206 107.28 209.361 110.775 213.588 110.989L214.412 111.011Z";
+
+function buildPenPath(w: number, h: number): string {
+  const bottomStraight = h - 7.861; // 210.139 - 202.139 = 8 for radius
+  const cornerCtrlY = h - 3.582; // 210.139 - 206.557 = 3.582
+  const shoulderY = 82.2346;
+  const shoulderCtrlY = shoulderY - 2.572; // 82.235 - 79.663
+  const shoulderRampY = shoulderY - 6.49;  // 82.235 - 75.744
+  const peakX = w / 2;
+  const cx = w / 2;
+  // Scale horizontal path points from original 222 width
+  const s = w / 222;
+  return (
+    `M${w} ${bottomStraight}` +
+    `C${w} ${cornerCtrlY} ${w - 3.582 * s} ${h} ${w - 8 * s} ${h}` +
+    `H${8 * s}` +
+    `C${3.582 * s} ${h} 0 ${cornerCtrlY} 0 ${bottomStraight}` +
+    `V${shoulderY}` +
+    `C0 ${shoulderCtrlY} ${1.236 * s} ${shoulderY - 4.99} ${3.322 * s} ${shoulderRampY}` +
+    `L${(peakX - 4.678 * s)} 1.510` +
+    `C${cx - 1.884 * s} -0.503 ${cx + 1.884 * s} -0.503 ${peakX + 4.678 * s} 1.510` +
+    `L${w - 3.322 * s} ${shoulderRampY}` +
+    `C${w - 1.236 * s} ${shoulderY - 4.99} ${w} ${shoulderCtrlY} ${w} ${shoulderY}` +
+    `V${bottomStraight}Z`
+  );
+}
+
 export function PhysicsPanels({ panels, containerWidth, containerHeight }: PhysicsPanelsProps) {
   const engineRef = useRef<Matter.Engine | null>(null);
   const bodiesRef = useRef<Map<string, Matter.Body>>(new Map());
-  const [positions, setPositions] = useState<Map<string, { x: number; y: number; angle: number }>>(new Map());
+  const panelRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
   const [pinned, setPinned] = useState<Set<string>>(new Set());
-  const rafRef = useRef<number>(0);
+  const loopRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dragRef = useRef<{ id: string; constraint: Matter.Constraint } | null>(null);
   const mouseBodyRef = useRef<Matter.Body | null>(null);
+  const wakeRef = useRef<() => void>(() => {});
 
   useEffect(() => {
-    const engine = Matter.Engine.create({ gravity: { x: 0, y: 1, scale: 0.001 } });
+    const engine = Matter.Engine.create({
+      gravity: { x: 0, y: 1, scale: 0.001 },
+    });
     engineRef.current = engine;
 
     const wallThickness = 60;
@@ -35,7 +80,7 @@ export function PhysicsPanels({ panels, containerWidth, containerHeight }: Physi
       { isStatic: true, restitution: 0.3, friction: 0.8 }
     );
     const ceiling = Matter.Bodies.rectangle(
-      containerWidth / 2, -wallThickness / 2, containerWidth * 2, wallThickness,
+      containerWidth / 2, -wallThickness - 20, containerWidth * 2, wallThickness,
       { isStatic: true, restitution: 0.3 }
     );
     const leftWall = Matter.Bodies.rectangle(
@@ -49,7 +94,7 @@ export function PhysicsPanels({ panels, containerWidth, containerHeight }: Physi
     Matter.Composite.add(engine.world, [floor, ceiling, leftWall, rightWall]);
 
     const startX = 140;
-    let startY = 100;
+    let startY = 150;
     for (const panel of panels) {
       const body = Matter.Bodies.rectangle(
         startX, startY, panel.width, panel.height,
@@ -67,6 +112,18 @@ export function PhysicsPanels({ panels, containerWidth, containerHeight }: Physi
     Matter.Composite.add(engine.world, mouseBody);
     mouseBodyRef.current = mouseBody;
 
+    // Initial DOM placement
+    for (const [id, body] of bodiesRef.current) {
+      const el = panelRefs.current.get(id);
+      const panel = panels.find((p) => p.id === id);
+      if (el && panel) {
+        el.style.left = `${body.position.x - panel.width / 2}px`;
+        el.style.top = `${body.position.y - panel.height / 2}px`;
+        el.style.transform = `rotate(${body.angle}rad)`;
+      }
+    }
+
+    let restFrames = 0;
     let lastTime = performance.now();
     const step = () => {
       const now = performance.now();
@@ -74,33 +131,67 @@ export function PhysicsPanels({ panels, containerWidth, containerHeight }: Physi
       lastTime = now;
       Matter.Engine.update(engine, delta);
 
-      const margin = 10;
-      for (const [, body] of bodiesRef.current) {
-        const bx = Math.max(margin, Math.min(containerWidth - margin, body.position.x));
-        const by = Math.max(margin, Math.min(containerHeight - margin, body.position.y));
+      // Clamp so panel edges stay within container (center clamp = halfSize)
+      for (const [id, body] of bodiesRef.current) {
+        const panel = panels.find((p) => p.id === id);
+        if (!panel) continue;
+        const halfW = panel.width / 2;
+        const halfH = panel.height / 2;
+        const bx = Math.max(halfW, Math.min(containerWidth - halfW, body.position.x));
+        const by = Math.max(halfH, Math.min(containerHeight - halfH, body.position.y));
         if (bx !== body.position.x || by !== body.position.y) {
           Matter.Body.setPosition(body, { x: bx, y: by });
           Matter.Body.setVelocity(body, { x: 0, y: 0 });
         }
       }
 
-      const newPositions = new Map<string, { x: number; y: number; angle: number }>();
+      // Direct DOM updates & detect if any body is moving
+      let anyMoving = false;
       for (const [id, body] of bodiesRef.current) {
-        newPositions.set(id, { x: body.position.x, y: body.position.y, angle: body.angle });
+        const speed = Math.abs(body.velocity.x) + Math.abs(body.velocity.y) + Math.abs(body.angularVelocity);
+        if (speed > 0.5) anyMoving = true;
+        const el = panelRefs.current.get(id);
+        const panel = panels.find((p) => p.id === id);
+        if (el && panel) {
+          el.style.left = `${body.position.x - panel.width / 2}px`;
+          el.style.top = `${body.position.y - panel.height / 2}px`;
+          el.style.transform = `rotate(${body.angle}rad)`;
+        }
       }
-      setPositions(newPositions);
-      rafRef.current = requestAnimationFrame(step);
+
+      // Auto-pause when everything has been at rest for 60 consecutive ticks (~1s)
+      if (!anyMoving && !dragRef.current) {
+        restFrames++;
+        if (restFrames > 60 && loopRef.current !== null) {
+          clearInterval(loopRef.current);
+          loopRef.current = null;
+        }
+      } else {
+        restFrames = 0;
+      }
     };
-    rafRef.current = requestAnimationFrame(step);
+
+    const wake = () => {
+      restFrames = 0;
+      if (loopRef.current === null) {
+        lastTime = performance.now();
+        loopRef.current = setInterval(step, 1000 / 60);
+      }
+    };
+    wakeRef.current = wake;
+
+    loopRef.current = setInterval(step, 1000 / 60);
 
     return () => {
-      cancelAnimationFrame(rafRef.current);
+      if (loopRef.current !== null) clearInterval(loopRef.current);
+      loopRef.current = null;
       Matter.Engine.clear(engine);
+      bodiesRef.current.clear();
     };
   }, [containerWidth, containerHeight, panels.length]);
 
-  // Sync pinned state to physics bodies
   useEffect(() => {
+    let needsWake = false;
     for (const [id, body] of bodiesRef.current) {
       const isPinned = pinned.has(id);
       if (isPinned && !body.isStatic) {
@@ -108,8 +199,10 @@ export function PhysicsPanels({ panels, containerWidth, containerHeight }: Physi
         Matter.Body.setAngle(body, 0);
       } else if (!isPinned && body.isStatic) {
         Matter.Body.setStatic(body, false);
+        needsWake = true;
       }
     }
+    if (needsWake) wakeRef.current();
   }, [pinned]);
 
   const handleDragStart = useCallback((e: React.PointerEvent, panelId: string) => {
@@ -136,6 +229,7 @@ export function PhysicsPanels({ panels, containerWidth, containerHeight }: Physi
     Matter.Composite.add(engine.world, constraint);
     dragRef.current = { id: panelId, constraint };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    wakeRef.current();
   }, [pinned]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
@@ -149,6 +243,7 @@ export function PhysicsPanels({ panels, containerWidth, containerHeight }: Physi
     if (!dragRef.current || !engineRef.current) return;
     Matter.Composite.remove(engineRef.current.world, dragRef.current.constraint);
     dragRef.current = null;
+    wakeRef.current();
   }, []);
 
   const handleTogglePin = useCallback((e: React.MouseEvent, panelId: string) => {
@@ -169,31 +264,95 @@ export function PhysicsPanels({ panels, containerWidth, containerHeight }: Physi
       onPointerUp={handlePointerUp}
     >
       {panels.map((panel) => {
-        const pos = positions.get(panel.id);
-        if (!pos) return null;
         const isPinned = pinned.has(panel.id);
+        const isPen = panel.shape === 'pen';
+        const isTicket = panel.shape === 'ticket';
+        const dragIcon = (
+          <div
+            className={`floating-panel-drag-icon ${isPinned ? 'pinned' : ''}`}
+            onPointerDown={(e) => handleDragStart(e, panel.id)}
+            onContextMenu={(e) => handleTogglePin(e, panel.id)}
+            style={{ cursor: isPinned ? 'default' : 'grab' }}
+          />
+        );
+
+        if (isTicket) {
+          const w = panel.width;
+          const h = panel.height;
+          return (
+            <div
+              key={panel.id}
+              ref={(el) => { panelRefs.current.set(panel.id, el); }}
+              className="floating-panel ticket-panel"
+              style={{
+                width: w,
+                height: h,
+                transformOrigin: 'center center',
+                pointerEvents: 'auto',
+              }}
+            >
+              <svg
+                width={w}
+                height={h}
+                viewBox="0 0 222 175"
+                preserveAspectRatio="none"
+                style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+              >
+                <path d={TICKET_SVG_PATH} fill={panel.color} />
+              </svg>
+              <div className="floating-panel-header ticket-header">
+                <span className="floating-panel-title">{panel.title}</span>
+                {dragIcon}
+              </div>
+              <div className="ticket-body">{panel.children}</div>
+            </div>
+          );
+        }
+
+        if (isPen) {
+          const w = panel.width;
+          const h = panel.height;
+          return (
+            <div
+              key={panel.id}
+              ref={(el) => { panelRefs.current.set(panel.id, el); }}
+              className="floating-panel pen-panel"
+              style={{
+                width: w,
+                height: h,
+                transformOrigin: 'center center',
+                pointerEvents: 'auto',
+              }}
+            >
+              <svg
+                width={w}
+                height={h}
+                style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+              >
+                <path d={buildPenPath(w, h)} fill={panel.color} />
+              </svg>
+              <div className="pen-tip-icon">{dragIcon}</div>
+              <div className="pen-title">{panel.title}</div>
+              <div className="pen-body">{panel.children}</div>
+            </div>
+          );
+        }
+
         return (
           <div
             key={panel.id}
+            ref={(el) => { panelRefs.current.set(panel.id, el); }}
             className="floating-panel"
             style={{
-              left: pos.x - panel.width / 2,
-              top: pos.y - panel.height / 2,
               width: panel.width,
               backgroundColor: panel.color,
-              transform: `rotate(${pos.angle}rad)`,
               transformOrigin: 'center center',
               pointerEvents: 'auto',
             }}
           >
             <div className="floating-panel-header">
               <span className="floating-panel-title">{panel.title}</span>
-              <div
-                className={`floating-panel-drag-icon ${isPinned ? 'pinned' : ''}`}
-                onPointerDown={(e) => handleDragStart(e, panel.id)}
-                onContextMenu={(e) => handleTogglePin(e, panel.id)}
-                style={{ cursor: isPinned ? 'default' : 'grab' }}
-              />
+              {dragIcon}
             </div>
             <div className="floating-panel-body">{panel.children}</div>
           </div>

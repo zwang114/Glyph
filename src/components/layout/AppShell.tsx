@@ -47,7 +47,7 @@ export function AppShell() {
           Zoom {Math.round((viewport.zoom || 1) * 100)}%
         </span>
         <span className="statusbar-hint">
-          Scroll to zoom &middot; Alt+drag to pan
+          Ctrl+Z undo &middot; Ctrl+Shift+Z redo &middot; E erase &middot; Scroll to zoom &middot; Alt+drag to pan
         </span>
       </footer>
     </div>

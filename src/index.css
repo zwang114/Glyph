@@ -191,6 +191,97 @@ body {
   border: 1.5px solid rgba(0, 0, 0, 0.3);
   cursor: grab;
   transition: background 0.15s, border-color 0.15s;
+  box-sizing: border-box;
+}
+
+/* Pen-shaped panel */
+.pen-panel {
+  background: transparent !important;
+  border-radius: 0 !important;
+  overflow: visible;
+}
+
+/* Ticket panel (notched card) */
+.ticket-panel {
+  background: transparent !important;
+  border-radius: 0 !important;
+  overflow: visible;
+}
+
+.ticket-panel .ticket-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 16px 16px 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 2;
+}
+
+.ticket-body {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.ticket-body > * {
+  pointer-events: auto;
+}
+
+.ticket-top {
+  position: absolute;
+  top: 44px;
+  left: 16px;
+  right: 16px;
+}
+
+.ticket-bottom {
+  position: absolute;
+  top: 123px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pen-tip-icon {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+}
+
+.pen-title {
+  position: absolute;
+  top: 58px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-family: var(--font-ui);
+  font-weight: var(--weight-light);
+  font-size: 11px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--color-bg);
+  opacity: 0.85;
+  z-index: 2;
+}
+
+.pen-body {
+  position: absolute;
+  top: 88px;
+  left: 16px;
+  right: 16px;
+  bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 2;
 }
 
 .floating-panel-drag-icon:active {

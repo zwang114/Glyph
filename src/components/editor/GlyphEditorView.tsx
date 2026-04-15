@@ -46,6 +46,7 @@ export function GlyphEditorView() {
       if (e.key === 'b' || e.key === 'B') setTool('pixel');
       if (e.key === 'l' || e.key === 'L') setTool('line');
       if (e.key === 'r' || e.key === 'R') setTool('rect');
+      if (e.key === 'f' || e.key === 'F') setTool('fill');
       if (e.key === 'e' || e.key === 'E') setTool('eraser');
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault(); useFontStore.temporal.getState().undo();
@@ -75,8 +76,10 @@ export function GlyphEditorView() {
   };
 
   const tools: { key: EditorTool; label: string }[] = [
-    { key: 'pixel', label: 'B PIXEL' }, { key: 'line', label: 'L LINE' },
-    { key: 'rect', label: 'R RECT' }, { key: 'eraser', label: 'E ERASE' },
+    { key: 'pixel', label: 'PIXEL' },
+    { key: 'line', label: 'LINE' },
+    { key: 'rect', label: 'RECTANGLE' },
+    { key: 'fill', label: 'FILL' },
   ];
   const shapes: { key: PixelShape; label: string }[] = [
     { key: 'square', label: 'SQ' }, { key: 'circle', label: 'CI' },
@@ -90,49 +93,41 @@ export function GlyphEditorView() {
 
   const panelDefs = [
     {
-      id: 'tools', width: 222, height: 160, color: '#F57C00', title: 'TOOLS',
+      id: 'tools', width: 222, height: 260, color: '#FF6200', title: 'PENS', shape: 'pen' as const,
+      children: (
+        <div className="fp-stack">
+          {tools.map((t) => (
+            <button key={t.key} className={`fp-btn ${activeTool === t.key ? 'fp-btn--active' : ''}`}
+              onClick={() => setTool(t.key)}>{t.label}</button>
+          ))}
+        </div>
+      ),
+    },
+    {
+      id: 'shape', width: 222, height: 175, color: '#879900', title: 'SHAPE', shape: 'ticket' as const,
       children: (
         <>
-          <div className="fp-row">
-            {tools.slice(0, 2).map((t) => (
-              <button key={t.key} className={`fp-btn ${activeTool === t.key ? 'fp-btn--active' : ''}`}
-                onClick={() => setTool(t.key)}>{t.label}</button>
-            ))}
+          <div className="ticket-top">
+            <div className="fp-shapes">
+              {shapes.map((s) => (
+                <button key={s.key} className={`fp-btn ${pixelShape === s.key ? 'fp-btn--active' : ''}`}
+                  onClick={() => setPixelShape(s.key)}>{s.label}</button>
+              ))}
+            </div>
           </div>
-          <div className="fp-row">
-            {tools.slice(2, 4).map((t) => (
-              <button key={t.key} className={`fp-btn ${activeTool === t.key ? 'fp-btn--active' : ''}`}
-                onClick={() => setTool(t.key)}>{t.label}</button>
-            ))}
-          </div>
-          <div className="fp-row">
-            <button className="fp-btn" onClick={() => useFontStore.temporal.getState().undo()}>UNDO</button>
-            <button className="fp-btn" onClick={() => useFontStore.temporal.getState().redo()}>REDO</button>
+          <div className="ticket-bottom">
+            <div className="fp-density-row">
+              <span className="fp-density-label">DENSITY</span>
+              <span className="fp-density-value">{Math.round(pixelDensity * 100)}%</span>
+            </div>
+            <input type="range" min="15" max="100" value={Math.round(pixelDensity * 100)}
+              onChange={(e) => setPixelDensity(Number(e.target.value) / 100)} className="fp-slider" />
           </div>
         </>
       ),
     },
     {
-      id: 'shape', width: 222, height: 152, color: '#9E9D24', title: 'SHAPE',
-      children: (
-        <>
-          <div className="fp-shapes">
-            {shapes.map((s) => (
-              <button key={s.key} className={`fp-btn ${pixelShape === s.key ? 'fp-btn--active' : ''}`}
-                onClick={() => setPixelShape(s.key)}>{s.label}</button>
-            ))}
-          </div>
-          <div className="fp-density-row">
-            <span className="fp-density-label">DENSITY</span>
-            <span className="fp-density-value">{Math.round(pixelDensity * 100)}%</span>
-          </div>
-          <input type="range" min="15" max="100" value={Math.round(pixelDensity * 100)}
-            onChange={(e) => setPixelDensity(Number(e.target.value) / 100)} className="fp-slider" />
-        </>
-      ),
-    },
-    {
-      id: 'mirror', width: 125, height: 196, color: '#6A1B9A', title: 'MIRROR',
+      id: 'mirror', width: 125, height: 196, color: '#6A1B9A', title: 'MIRROR', shape: 'rect' as const,
       children: (
         <div className="fp-stack">
           {mirrors.map((m) => (

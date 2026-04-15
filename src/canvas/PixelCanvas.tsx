@@ -386,6 +386,35 @@ export function PixelCanvas() {
       lineStartRef.current = cell;
     } else if (tool === 'rect') {
       rectStartRef.current = cell;
+    } else if (tool === 'fill') {
+      // Flood fill from clicked cell
+      const targetValue = glyph.pixels[cell.row]?.[cell.col];
+      if (targetValue === undefined) return;
+      const newValue = !targetValue;
+      const visited = new Set<string>();
+      const stack: { row: number; col: number }[] = [cell];
+      const filled: { row: number; col: number; value: boolean }[] = [];
+      while (stack.length > 0) {
+        const { row, col } = stack.pop()!;
+        const key = `${row},${col}`;
+        if (visited.has(key)) continue;
+        if (row < 0 || row >= glyph.gridHeight || col < 0 || col >= glyph.gridWidth) continue;
+        if (glyph.pixels[row][col] !== targetValue) continue;
+        visited.add(key);
+        // Apply mirror
+        for (const mc of getMirrorCells(row, col, glyph, mirror)) {
+          filled.push({ row: mc.row, col: mc.col, value: newValue });
+        }
+        stack.push({ row: row + 1, col });
+        stack.push({ row: row - 1, col });
+        stack.push({ row, col: col + 1 });
+        stack.push({ row, col: col - 1 });
+      }
+      useFontStore.getState().setPixels(glyphId, filled);
+      // Fill is one-shot — don't continue drag
+      drawingRef.current = false;
+      useFontStore.temporal.getState().resume();
+      return;
     }
 
     (e.target as HTMLElement).setPointerCapture(e.pointerId);

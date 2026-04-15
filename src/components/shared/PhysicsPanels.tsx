@@ -1,5 +1,9 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import Matter from 'matter-js';
+import decomp from 'poly-decomp';
+
+// Enable concave polygon decomposition (required for some fromVertices shapes)
+Matter.Common.setDecomp(decomp);
 
 interface PanelDef {
   id: string;
@@ -7,7 +11,7 @@ interface PanelDef {
   height: number;
   color: string;
   title: string;
-  shape?: 'rect' | 'pen' | 'ticket';
+  shape?: 'rect' | 'pen' | 'ticket' | 'snowman' | 'pill';
   children: React.ReactNode;
 }
 
@@ -18,6 +22,56 @@ interface PhysicsPanelsProps {
 }
 
 const PEN_TIP_HEIGHT = 82;
+
+/**
+ * Create a Matter body that visually matches the panel's shape.
+ * Fall back to a rounded rectangle if fromVertices fails.
+ */
+function createPanelBody(panel: PanelDef, x: number, y: number): Matter.Body {
+  const w = panel.width;
+  const h = panel.height;
+  const bodyOpts = {
+    restitution: 0.25,
+    friction: 0.6,
+    frictionAir: 0.02,
+    density: 0.002,
+  };
+
+  if (panel.shape === 'pill') {
+    // Stadium — corner radius = min(w,h)/2 so it's fully rounded
+    return Matter.Bodies.rectangle(x, y, w, h, {
+      ...bodyOpts,
+      chamfer: { radius: Math.min(w, h) / 2 - 1 },
+    });
+  }
+
+  if (panel.shape === 'pen') {
+    // Convex pentagon: peak + 2 shoulders + 2 bottom corners
+    const tipH = PEN_TIP_HEIGHT;
+    const verts = [
+      { x: 0, y: -h / 2 },                // top peak
+      { x: w / 2, y: -h / 2 + tipH },     // right shoulder
+      { x: w / 2, y: h / 2 },             // bottom-right
+      { x: -w / 2, y: h / 2 },            // bottom-left
+      { x: -w / 2, y: -h / 2 + tipH },    // left shoulder
+    ];
+    const body = Matter.Bodies.fromVertices(x, y, [verts], bodyOpts);
+    if (body) return body;
+    // Fallback: rounded rect
+    return Matter.Bodies.rectangle(x, y, w, h, { ...bodyOpts, chamfer: { radius: 16 } });
+  }
+
+  if (panel.shape === 'snowman') {
+    // Approximate with rounded rectangle (concave snowman can't be a single body)
+    return Matter.Bodies.rectangle(x, y, w, h, {
+      ...bodyOpts,
+      chamfer: { radius: Math.min(w / 2, 80) },
+    });
+  }
+
+  // Default rect (with small chamfer) — used for ticket and plain panels
+  return Matter.Bodies.rectangle(x, y, w, h, { ...bodyOpts, chamfer: { radius: 16 } });
+}
 
 /**
  * Build the pen-outline path for a panel of width `w` and height `h`.
@@ -32,6 +86,10 @@ const PEN_TIP_HEIGHT = 82;
 // Ticket/card shape with side notches (from user-provided SVG at 222x175,
 // notches centered at y=103).
 const TICKET_SVG_PATH = "M214.412 111.011C218.639 111.225 222 114.72 222 119V167C222 171.418 218.418 175 214 175H8C3.58172 175 0 171.418 0 167V119C0 114.72 3.36114 111.225 7.58789 111.011L8.41211 110.989C12.6389 110.775 16 107.28 16 103C16 98.7199 12.6389 95.2252 8.41211 95.0107L7.58789 94.9893C3.36114 94.7748 1.79435e-07 91.2801 0 87V8C0 3.58172 3.58172 1.04692e-07 8 0H214C218.418 0 222 3.58172 222 8V87C222 91.2801 218.639 94.7748 214.412 94.9893L213.588 95.0107C209.361 95.2252 206 98.7199 206 103C206 107.28 209.361 110.775 213.588 110.989L214.412 111.011Z";
+
+// Snowman/figure-8 shape: small circle on top (r=65.5), large circle on bottom
+// (r=110.5), connected with concave curves. User-provided SVG at 221x310.
+const SNOWMAN_SVG_PATH = "M110.5 0C146.675 0 176 29.3253 176 65.5C176 79.4191 171.657 92.323 164.254 102.934C198.106 121.818 221 157.985 221 199.5C221 260.527 171.527 310 110.5 310C49.4725 310 0 260.527 0 199.5C0 157.985 22.8938 121.818 56.7451 102.934C49.3424 92.3231 45 79.4189 45 65.5C45 29.3253 74.3253 0 110.5 0Z";
 
 function buildPenPath(w: number, h: number): string {
   const bottomStraight = h - 7.861; // 210.139 - 202.139 = 8 for radius
@@ -96,13 +154,7 @@ export function PhysicsPanels({ panels, containerWidth, containerHeight }: Physi
     const startX = 140;
     let startY = 150;
     for (const panel of panels) {
-      const body = Matter.Bodies.rectangle(
-        startX, startY, panel.width, panel.height,
-        {
-          restitution: 0.25, friction: 0.6, frictionAir: 0.02,
-          chamfer: { radius: 16 }, density: 0.002,
-        }
-      );
+      const body = createPanelBody(panel, startX, startY);
       Matter.Composite.add(engine.world, body);
       bodiesRef.current.set(panel.id, body);
       startY += panel.height + 30;
@@ -190,6 +242,31 @@ export function PhysicsPanels({ panels, containerWidth, containerHeight }: Physi
     };
   }, [containerWidth, containerHeight, panels.length]);
 
+  // Resize physics bodies when panel dimensions change
+  useEffect(() => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    for (const panel of panels) {
+      const body = bodiesRef.current.get(panel.id);
+      if (!body) continue;
+      const currentW = body.bounds.max.x - body.bounds.min.x;
+      const currentH = body.bounds.max.y - body.bounds.min.y;
+      if (Math.abs(currentW - panel.width) > 1 || Math.abs(currentH - panel.height) > 1) {
+        const pos = { x: body.position.x, y: body.position.y };
+        const angle = body.angle;
+        const wasStatic = body.isStatic;
+        Matter.Composite.remove(engine.world, body);
+        const newBody = createPanelBody(panel, pos.x, pos.y);
+        Matter.Body.setAngle(newBody, angle);
+        if (wasStatic) Matter.Body.setStatic(newBody, true);
+        Matter.Composite.add(engine.world, newBody);
+        bodiesRef.current.set(panel.id, newBody);
+        wakeRef.current();
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panels.map((p) => `${p.id}:${p.width}x${p.height}`).join('|')]);
+
   useEffect(() => {
     let needsWake = false;
     for (const [id, body] of bodiesRef.current) {
@@ -267,6 +344,8 @@ export function PhysicsPanels({ panels, containerWidth, containerHeight }: Physi
         const isPinned = pinned.has(panel.id);
         const isPen = panel.shape === 'pen';
         const isTicket = panel.shape === 'ticket';
+        const isSnowman = panel.shape === 'snowman';
+        const isPill = panel.shape === 'pill';
         const dragIcon = (
           <div
             className={`floating-panel-drag-icon ${isPinned ? 'pinned' : ''}`}
@@ -275,6 +354,62 @@ export function PhysicsPanels({ panels, containerWidth, containerHeight }: Physi
             style={{ cursor: isPinned ? 'default' : 'grab' }}
           />
         );
+
+        if (isPill) {
+          return (
+            <div
+              key={panel.id}
+              ref={(el) => { panelRefs.current.set(panel.id, el); }}
+              className="floating-panel pill-panel"
+              style={{
+                width: panel.width,
+                height: panel.height,
+                backgroundColor: panel.color,
+                transformOrigin: 'center center',
+                pointerEvents: 'auto',
+              }}
+            >
+              <div className="pill-header">
+                {dragIcon}
+                <span className="pill-title">{panel.title}</span>
+              </div>
+              <div className="pill-body">{panel.children}</div>
+            </div>
+          );
+        }
+
+        if (isSnowman) {
+          const w = panel.width;
+          const h = panel.height;
+          return (
+            <div
+              key={panel.id}
+              ref={(el) => { panelRefs.current.set(panel.id, el); }}
+              className="floating-panel snowman-panel"
+              style={{
+                width: w,
+                height: h,
+                transformOrigin: 'center center',
+                pointerEvents: 'auto',
+              }}
+            >
+              <svg
+                width={w}
+                height={h}
+                viewBox="0 0 221 310"
+                preserveAspectRatio="none"
+                style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+              >
+                <path d={SNOWMAN_SVG_PATH} fill={panel.color} />
+              </svg>
+              <div className="snowman-head">
+                <div className="snowman-drag">{dragIcon}</div>
+                <div className="snowman-title">{panel.title}</div>
+              </div>
+              <div className="snowman-body">{panel.children}</div>
+            </div>
+          );
+        }
 
         if (isTicket) {
           const w = panel.width;

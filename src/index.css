@@ -201,6 +201,236 @@ body {
   overflow: visible;
 }
 
+/* Pill panel (rounded stadium, variable height) */
+.pill-panel {
+  border-radius: 9999px !important;
+  overflow: visible;
+}
+
+.pill-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding-top: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.pill-header > * {
+  pointer-events: auto;
+}
+
+.pill-title {
+  font-family: var(--font-ui);
+  font-weight: var(--weight-light);
+  font-size: 18px;
+  color: rgba(255, 255, 255, 0.9);
+  letter-spacing: 0.3px;
+}
+
+.pill-body {
+  position: absolute;
+  top: 88px;
+  left: 32px;
+  right: 32px;
+  bottom: 16px;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+}
+
+/* Snowman panel (figure-8 shape) */
+.snowman-panel {
+  background: transparent !important;
+  border-radius: 0 !important;
+  overflow: visible;
+}
+
+.snowman-head {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 131px; /* small circle diameter */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.snowman-drag {
+  margin-top: 24px;
+  pointer-events: auto;
+}
+
+.snowman-title {
+  margin-top: 24px;
+  font-family: var(--font-ui);
+  font-weight: var(--weight-light);
+  font-size: 20px;
+  color: rgba(255, 255, 255, 0.9);
+  letter-spacing: 0.5px;
+}
+
+.snowman-body {
+  position: absolute;
+  top: 131px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.snowman-body > * {
+  pointer-events: auto;
+}
+
+/* Mirror controls: toggle + mode buttons (slide out when ON) */
+.mirror-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+/* Mirror ON/OFF toggle — ON on left, OFF on right */
+.mirror-toggle {
+  position: relative;
+  width: 100%;
+  height: 28px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 0 2px;
+  user-select: none;
+}
+
+.mirror-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: calc(50% - 4px);
+  height: 24px;
+  background: var(--color-fg);
+  border-radius: 12px;
+  transition: transform 0.2s ease-out;
+  z-index: 1;
+  /* Default: OFF state — thumb on right */
+}
+
+.mirror-toggle--on .mirror-toggle-thumb {
+  transform: translateX(calc(-100% - 0px));
+}
+
+.mirror-toggle-label {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  text-align: center;
+  font-family: var(--font-ui);
+  font-weight: var(--weight-light);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  transition: color 0.2s;
+}
+
+/* OFF state — thumb on right, OFF label black, ON label muted */
+.mirror-toggle:not(.mirror-toggle--on) .mirror-toggle-label.off {
+  color: var(--color-bg);
+}
+.mirror-toggle:not(.mirror-toggle--on) .mirror-toggle-label.on {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* ON state — thumb on left, ON label black, OFF label muted */
+.mirror-toggle--on .mirror-toggle-label.on {
+  color: var(--color-bg);
+}
+.mirror-toggle--on .mirror-toggle-label.off {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* Mirror mode buttons — H & V side-by-side row, H+V full-width row */
+.mirror-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  transform: translateY(-10px);
+  transition:
+    opacity 0.25s ease-out,
+    max-height 0.3s ease-out,
+    transform 0.25s ease-out,
+    margin-top 0.25s ease-out;
+  pointer-events: none;
+  margin-top: -8px;
+}
+
+.mirror-controls--on .mirror-modes {
+  opacity: 1;
+  max-height: 200px;
+  transform: translateY(0);
+  pointer-events: auto;
+  margin-top: 16px;
+}
+
+.mirror-modes-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.mirror-modes-row .mirror-mode-btn {
+  flex: 1;
+}
+
+.mirror-mode-btn {
+  padding: 7px 12px;
+  background: transparent;
+  color: var(--color-bg);
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  border-radius: 14px;
+  font-family: var(--font-ui);
+  font-weight: var(--weight-light);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.mirror-mode-btn--full {
+  width: 100%;
+}
+
+.mirror-mode-btn:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.mirror-mode-btn--active {
+  background: var(--color-fg);
+  color: var(--color-bg);
+  border-color: transparent;
+}
+
 /* Ticket panel (notched card) */
 .ticket-panel {
   background: transparent !important;

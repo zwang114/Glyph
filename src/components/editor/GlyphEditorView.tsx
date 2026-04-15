@@ -5,7 +5,7 @@ import { useEditorStore } from '../../stores/editorStore';
 import { useFontStore } from '../../stores/fontStore';
 import { BASIC_LATIN } from '../../utils/charset';
 import { PhysicsPanels } from '../shared/PhysicsPanels';
-import type { EditorTool, MirrorMode, PixelShape } from '../../types/editor';
+import type { EditorTool, PixelShape } from '../../types/editor';
 
 export function GlyphEditorView() {
   const params = useParams<{ id: string; glyphId: string }>();
@@ -86,10 +86,6 @@ export function GlyphEditorView() {
     { key: 'diamond', label: 'DM' }, { key: 'triangle', label: 'TR' },
     { key: 'metaball', label: 'MB' },
   ];
-  const mirrors: { key: MirrorMode; label: string }[] = [
-    { key: 'none', label: 'OFF' }, { key: 'horizontal', label: 'H' },
-    { key: 'vertical', label: 'V' }, { key: 'both', label: 'HV' },
-  ];
 
   const panelDefs = [
     {
@@ -127,13 +123,25 @@ export function GlyphEditorView() {
       ),
     },
     {
-      id: 'mirror', width: 125, height: 196, color: '#6A1B9A', title: 'MIRROR', shape: 'rect' as const,
+      id: 'mirror', width: 221, height: mirrorMode === 'none' ? 191 : 279, color: '#610099', title: 'Mirror', shape: 'pill' as const,
       children: (
-        <div className="fp-stack">
-          {mirrors.map((m) => (
-            <button key={m.key} className={`fp-btn ${mirrorMode === m.key ? 'fp-btn--active' : ''}`}
-              onClick={() => setMirrorMode(m.key)}>{m.label}</button>
-          ))}
+        <div className={`mirror-controls ${mirrorMode !== 'none' ? 'mirror-controls--on' : ''}`}>
+          <div className={`mirror-toggle ${mirrorMode !== 'none' ? 'mirror-toggle--on' : ''}`}
+            onClick={() => setMirrorMode(mirrorMode === 'none' ? 'horizontal' : 'none')}>
+            <div className="mirror-toggle-thumb" />
+            <span className="mirror-toggle-label on">ON</span>
+            <span className="mirror-toggle-label off">OFF</span>
+          </div>
+          <div className="mirror-modes">
+            <div className="mirror-modes-row">
+              <button className={`mirror-mode-btn ${mirrorMode === 'horizontal' ? 'mirror-mode-btn--active' : ''}`}
+                onClick={() => setMirrorMode('horizontal')}>H</button>
+              <button className={`mirror-mode-btn ${mirrorMode === 'vertical' ? 'mirror-mode-btn--active' : ''}`}
+                onClick={() => setMirrorMode('vertical')}>V</button>
+            </div>
+            <button className={`mirror-mode-btn mirror-mode-btn--full ${mirrorMode === 'both' ? 'mirror-mode-btn--active' : ''}`}
+              onClick={() => setMirrorMode('both')}>H+V</button>
+          </div>
         </div>
       ),
     },

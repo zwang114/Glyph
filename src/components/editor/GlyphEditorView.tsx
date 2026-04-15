@@ -1,45 +1,44 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { PixelCanvas } from '../../canvas/PixelCanvas';
 import { useEditorStore } from '../../stores/editorStore';
 import { useFontStore } from '../../stores/fontStore';
 import { BASIC_LATIN } from '../../utils/charset';
+import { PhysicsPanels } from '../shared/PhysicsPanels';
 import type { EditorTool, MirrorMode, PixelShape } from '../../types/editor';
 
 export function GlyphEditorView() {
   const params = useParams<{ id: string; glyphId: string }>();
   const navigate = useNavigate();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerSize, setContainerSize] = useState({ w: 1200, h: 800 });
   const setSelectedGlyph = useEditorStore((s) => s.setSelectedGlyph);
   const selectedGlyphId = useEditorStore((s) => s.selectedGlyphId);
   const activeTool = useEditorStore((s) => s.activeTool);
   const mirrorMode = useEditorStore((s) => s.mirrorMode);
   const pixelShape = useEditorStore((s) => s.pixelShape);
   const pixelDensity = useEditorStore((s) => s.pixelDensity);
-  const onionSkinEnabled = useEditorStore((s) => s.onionSkinEnabled);
-  const onionSkinFont = useEditorStore((s) => s.onionSkinFont);
-  const onionSkinSize = useEditorStore((s) => s.onionSkinSize);
   const setTool = useEditorStore((s) => s.setTool);
   const setMirrorMode = useEditorStore((s) => s.setMirrorMode);
   const setPixelShape = useEditorStore((s) => s.setPixelShape);
   const setPixelDensity = useEditorStore((s) => s.setPixelDensity);
-  const setOnionSkinEnabled = useEditorStore((s) => s.setOnionSkinEnabled);
-  const toggleOnionSkinFont = useEditorStore((s) => s.toggleOnionSkinFont);
-  const setOnionSkinSize = useEditorStore((s) => s.setOnionSkinSize);
-  const resizeGlyph = useFontStore((s) => s.resizeGlyph);
   const glyph = useFontStore((s) =>
     selectedGlyphId ? s.glyphs[selectedGlyphId] : null
   );
-
-  const [gridW, setGridW] = useState(glyph?.gridWidth ?? 24);
-  const [gridH, setGridH] = useState(glyph?.gridHeight ?? 32);
 
   useEffect(() => {
     if (params.glyphId) setSelectedGlyph(params.glyphId);
   }, [params.glyphId, setSelectedGlyph]);
 
   useEffect(() => {
-    if (glyph) { setGridW(glyph.gridWidth); setGridH(glyph.gridHeight); }
-  }, [glyph?.gridWidth, glyph?.gridHeight]);
+    const el = containerRef.current;
+    if (!el) return;
+    const obs = new ResizeObserver(([entry]) => {
+      setContainerSize({ w: entry.contentRect.width, h: entry.contentRect.height });
+    });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -54,21 +53,10 @@ export function GlyphEditorView() {
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
         e.preventDefault(); useFontStore.temporal.getState().redo();
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
-        e.preventDefault(); useFontStore.temporal.getState().redo();
-      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [setTool]);
-
-  const applyGridSize = () => {
-    if (selectedGlyphId && (gridW !== glyph?.gridWidth || gridH !== glyph?.gridHeight)) {
-      resizeGlyph(selectedGlyphId, Math.max(4, gridW), Math.max(4, gridH));
-    }
-  };
-
-  const filledCount = glyph ? glyph.pixels.flat().filter(Boolean).length : 0;
 
   const currentIdx = BASIC_LATIN.findIndex(
     (c) => c.unicode.toString(16).padStart(4, '0') === selectedGlyphId
@@ -86,156 +74,88 @@ export function GlyphEditorView() {
     }
   };
 
-  const tools: { key: EditorTool; label: string; shortcut: string }[] = [
-    { key: 'pixel', label: 'Pixel', shortcut: 'B' },
-    { key: 'line', label: 'Line', shortcut: 'L' },
-    { key: 'rect', label: 'Rect', shortcut: 'R' },
-    { key: 'eraser', label: 'Erase', shortcut: 'E' },
-  ];
-  const mirrors: { key: MirrorMode; label: string }[] = [
-    { key: 'none', label: 'Off' }, { key: 'horizontal', label: 'H' },
-    { key: 'vertical', label: 'V' }, { key: 'both', label: 'HV' },
+  const tools: { key: EditorTool; label: string }[] = [
+    { key: 'pixel', label: 'B PIXEL' }, { key: 'line', label: 'L LINE' },
+    { key: 'rect', label: 'R RECT' }, { key: 'eraser', label: 'E ERASE' },
   ];
   const shapes: { key: PixelShape; label: string }[] = [
-    { key: 'square', label: 'Sq' }, { key: 'circle', label: 'Ci' },
-    { key: 'diamond', label: 'Dm' }, { key: 'triangle', label: 'Tr' },
-    { key: 'metaball', label: 'Mb' },
+    { key: 'square', label: 'SQ' }, { key: 'circle', label: 'CI' },
+    { key: 'diamond', label: 'DM' }, { key: 'triangle', label: 'TR' },
+    { key: 'metaball', label: 'MB' },
+  ];
+  const mirrors: { key: MirrorMode; label: string }[] = [
+    { key: 'none', label: 'OFF' }, { key: 'horizontal', label: 'H' },
+    { key: 'vertical', label: 'V' }, { key: 'both', label: 'HV' },
   ];
 
-  return (
-    <div className="editor">
-      <div className="editor-sidebar">
-        {/* Tools */}
-        <div className="panel">
-          <h3 className="panel-title">Tools</h3>
-          <div className="tool-grid">
-            {tools.map((t) => (
-              <button key={t.key} className={`btn btn--sm ${activeTool === t.key ? 'btn--active' : ''}`}
-                onClick={() => setTool(t.key)} title={`${t.label} (${t.shortcut})`}>
-                {t.shortcut} {t.label}
-              </button>
+  const panelDefs = [
+    {
+      id: 'tools', width: 222, height: 160, color: '#F57C00', title: 'TOOLS',
+      children: (
+        <>
+          <div className="fp-row">
+            {tools.slice(0, 2).map((t) => (
+              <button key={t.key} className={`fp-btn ${activeTool === t.key ? 'fp-btn--active' : ''}`}
+                onClick={() => setTool(t.key)}>{t.label}</button>
             ))}
           </div>
-          <div className="tool-buttons" style={{ marginTop: '8px' }}>
-            <button className="btn btn--sm" onClick={() => useFontStore.temporal.getState().undo()}>Undo</button>
-            <button className="btn btn--sm" onClick={() => useFontStore.temporal.getState().redo()}>Redo</button>
+          <div className="fp-row">
+            {tools.slice(2, 4).map((t) => (
+              <button key={t.key} className={`fp-btn ${activeTool === t.key ? 'fp-btn--active' : ''}`}
+                onClick={() => setTool(t.key)}>{t.label}</button>
+            ))}
           </div>
-        </div>
-
-        {/* Shape */}
-        <div className="panel">
-          <h3 className="panel-title">Shape</h3>
-          <div className="shape-row">
+          <div className="fp-row">
+            <button className="fp-btn" onClick={() => useFontStore.temporal.getState().undo()}>UNDO</button>
+            <button className="fp-btn" onClick={() => useFontStore.temporal.getState().redo()}>REDO</button>
+          </div>
+        </>
+      ),
+    },
+    {
+      id: 'shape', width: 222, height: 152, color: '#9E9D24', title: 'SHAPE',
+      children: (
+        <>
+          <div className="fp-shapes">
             {shapes.map((s) => (
-              <button key={s.key} className={`btn btn--sm ${pixelShape === s.key ? 'btn--active' : ''}`}
+              <button key={s.key} className={`fp-btn ${pixelShape === s.key ? 'fp-btn--active' : ''}`}
                 onClick={() => setPixelShape(s.key)}>{s.label}</button>
             ))}
           </div>
+          <div className="fp-density-row">
+            <span className="fp-density-label">DENSITY</span>
+            <span className="fp-density-value">{Math.round(pixelDensity * 100)}%</span>
+          </div>
+          <input type="range" min="15" max="100" value={Math.round(pixelDensity * 100)}
+            onChange={(e) => setPixelDensity(Number(e.target.value) / 100)} className="fp-slider" />
+        </>
+      ),
+    },
+    {
+      id: 'mirror', width: 125, height: 196, color: '#6A1B9A', title: 'MIRROR',
+      children: (
+        <div className="fp-stack">
+          {mirrors.map((m) => (
+            <button key={m.key} className={`fp-btn ${mirrorMode === m.key ? 'fp-btn--active' : ''}`}
+              onClick={() => setMirrorMode(m.key)}>{m.label}</button>
+          ))}
         </div>
+      ),
+    },
+  ];
 
-        {/* Density */}
-        <div className="panel">
-          <h3 className="panel-title">Density</h3>
-          <div className="density-slider">
-            <input type="range" min="15" max="100" value={Math.round(pixelDensity * 100)}
-              onChange={(e) => setPixelDensity(Number(e.target.value) / 100)} className="slider" />
-            <span className="mono density-value">{Math.round(pixelDensity * 100)}%</span>
-          </div>
-        </div>
-
-        {/* Mirror */}
-        <div className="panel">
-          <h3 className="panel-title">Mirror</h3>
-          <div className="tool-buttons">
-            {mirrors.map((m) => (
-              <button key={m.key} className={`btn btn--sm ${mirrorMode === m.key ? 'btn--active' : ''}`}
-                onClick={() => setMirrorMode(m.key)}>{m.label}</button>
-            ))}
-          </div>
-        </div>
-
-        {/* Canvas Size */}
-        <div className="panel">
-          <h3 className="panel-title">Canvas Size</h3>
-          <div className="size-controls">
-            <label className="size-field">
-              <span className="panel-label">W</span>
-              <input type="number" className="size-input mono" value={gridW} min={4} max={128}
-                onChange={(e) => setGridW(Number(e.target.value))}
-                onBlur={applyGridSize}
-                onKeyDown={(e) => { if (e.key === 'Enter') applyGridSize(); }} />
-            </label>
-            <span className="size-x">x</span>
-            <label className="size-field">
-              <span className="panel-label">H</span>
-              <input type="number" className="size-input mono" value={gridH} min={4} max={128}
-                onChange={(e) => setGridH(Number(e.target.value))}
-                onBlur={applyGridSize}
-                onKeyDown={(e) => { if (e.key === 'Enter') applyGridSize(); }} />
-            </label>
-          </div>
-        </div>
-
-        {/* Onion Skin */}
-        <div className="panel">
-          <h3 className="panel-title">Onion Skin</h3>
-          <div className="tool-buttons">
-            <button className={`btn btn--sm ${onionSkinEnabled ? 'btn--active' : ''}`}
-              onClick={() => setOnionSkinEnabled(!onionSkinEnabled)} style={{ flex: 1 }}>
-              {onionSkinEnabled ? 'On' : 'Off'}
-            </button>
-          </div>
-          {onionSkinEnabled && (
-            <>
-              <div className="tool-buttons">
-                <button className={`btn btn--sm ${onionSkinFont === 'serif' ? 'btn--active' : ''}`}
-                  onClick={toggleOnionSkinFont}>Serif</button>
-                <button className={`btn btn--sm ${onionSkinFont === 'sans-serif' ? 'btn--active' : ''}`}
-                  onClick={toggleOnionSkinFont}>Sans</button>
-              </div>
-              <div className="density-slider">
-                <span className="panel-label" style={{ width: 28, flexShrink: 0 }}>Size</span>
-                <input type="range" min="30" max="200" value={Math.round(onionSkinSize * 100)}
-                  onChange={(e) => setOnionSkinSize(Number(e.target.value) / 100)} className="slider" />
-                <span className="mono density-value">{Math.round(onionSkinSize * 100)}%</span>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Glyph info */}
-        <div className="panel">
-          <h3 className="panel-title">Glyph</h3>
-          <div className="panel-row">
-            <span className="panel-label">Name</span>
-            <span className="panel-value mono">{glyph?.name ?? '—'}</span>
-          </div>
-          <div className="panel-row">
-            <span className="panel-label">Unicode</span>
-            <span className="panel-value mono">
-              {glyph ? `U+${glyph.unicode.toString(16).toUpperCase().padStart(4, '0')}` : '—'}
-            </span>
-          </div>
-          <div className="panel-row">
-            <span className="panel-label">Pixels</span>
-            <span className="panel-value mono">{filledCount}</span>
-          </div>
-          <div className="glyph-nav">
-            <button className="btn btn--sm" onClick={handlePrev} disabled={currentIdx <= 0}>Prev</button>
-            <span className="mono" style={{ fontSize: '18px' }}>{glyph ? String.fromCharCode(glyph.unicode) : ''}</span>
-            <button className="btn btn--sm" onClick={handleNext} disabled={currentIdx >= BASIC_LATIN.length - 1}>Next</button>
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="panel">
-          <button className="btn btn--sm" onClick={() => selectedGlyphId && useFontStore.getState().clearGlyph(selectedGlyphId)}
-            style={{ width: '100%' }}>Clear glyph</button>
-        </div>
-      </div>
-
-      <div className="editor-canvas">
-        <PixelCanvas />
+  return (
+    <div className="editor-fullcanvas" ref={containerRef}>
+      <PixelCanvas />
+      <PhysicsPanels
+        panels={panelDefs}
+        containerWidth={containerSize.w}
+        containerHeight={containerSize.h}
+      />
+      <div className="floating-nav">
+        <button className="fp-btn fp-btn--dark" onClick={handlePrev} disabled={currentIdx <= 0}>PREV</button>
+        <span className="floating-nav-char">{glyph ? String.fromCharCode(glyph.unicode) : ''}</span>
+        <button className="fp-btn fp-btn--dark" onClick={handleNext} disabled={currentIdx >= BASIC_LATIN.length - 1}>NEXT</button>
       </div>
     </div>
   );

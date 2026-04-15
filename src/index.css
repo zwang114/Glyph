@@ -151,6 +151,175 @@ body {
   font-size: 9px;
 }
 
+/* ============================================
+   Floating Panels
+   ============================================ */
+
+.floating-panel {
+  position: absolute;
+  border-radius: 16px;
+  z-index: 10;
+  user-select: none;
+}
+
+.floating-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 0 16px;
+  cursor: grab;
+}
+
+.floating-panel-header:active {
+  cursor: grabbing;
+}
+
+.floating-panel-title {
+  font-family: var(--font-ui);
+  font-weight: var(--weight-light);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--color-bg);
+  opacity: 0.8;
+}
+
+.floating-panel-drag-icon {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(0, 0, 0, 0.3);
+  cursor: grab;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.floating-panel-drag-icon:active {
+  cursor: grabbing;
+}
+
+.floating-panel-drag-icon.pinned {
+  background: var(--color-bg);
+  border-color: var(--color-bg);
+  cursor: default;
+}
+
+.floating-panel-body {
+  padding: 12px 16px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Floating panel button overrides */
+.fp-btn {
+  font-family: var(--font-ui);
+  font-weight: var(--weight-light);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 7px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 14px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--color-bg);
+  transition: background 0.1s;
+}
+
+.fp-btn:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.fp-btn--active {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  border-color: transparent;
+}
+
+.fp-row {
+  display: flex;
+  gap: 8px;
+}
+
+.fp-row .fp-btn {
+  flex: 1;
+}
+
+.fp-shapes {
+  display: flex;
+  gap: 5px;
+}
+
+.fp-shapes .fp-btn {
+  width: 34px;
+  height: 28px;
+  padding: 0;
+  text-align: center;
+  border-radius: 14px;
+}
+
+.fp-density-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0 0 0;
+}
+
+.fp-density-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--color-bg);
+  opacity: 0.8;
+}
+
+.fp-density-value {
+  font-size: 10px;
+  color: var(--color-bg);
+  opacity: 0.8;
+  margin-left: auto;
+}
+
+.fp-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1;
+  height: 2px;
+  background: rgba(0, 0, 0, 0.2);
+  outline: none;
+  cursor: pointer;
+  border-radius: 1px;
+}
+
+.fp-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--color-bg);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.fp-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  background: var(--color-bg);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.fp-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fp-stack .fp-btn {
+  width: 100%;
+}
+
 /* Canvas size controls */
 .size-controls {
   display: flex;
@@ -513,22 +682,46 @@ body {
    Glyph Editor
    ============================================ */
 
-.editor {
-  display: flex;
+.editor-fullcanvas {
+  width: 100%;
   height: 100%;
-}
-
-.editor-sidebar {
-  width: var(--sidebar-width);
-  border-right: var(--border);
-  overflow-y: auto;
-  flex-shrink: 0;
-}
-
-.editor-canvas {
-  flex: 1;
-  overflow: hidden;
   position: relative;
+  overflow: hidden;
+}
+
+.floating-nav {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 10;
+}
+
+.floating-nav-char {
+  font-family: var(--font-mono);
+  font-weight: var(--weight-light);
+  font-size: 24px;
+  color: var(--color-fg);
+  opacity: 0.6;
+}
+
+.fp-btn--dark {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-fg);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.fp-btn--dark:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.fp-btn:disabled {
+  opacity: 0.25;
+  cursor: default;
+  pointer-events: none;
 }
 
 /* ============================================

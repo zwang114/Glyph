@@ -6,12 +6,15 @@ interface EditorState {
   selectedGlyphId: string | null;
   mirrorMode: MirrorMode;
   pixelShape: PixelShape;
-  pixelDensity: number; // 0.15 to 1.0 — ratio of shape size to cell size
+  pixelDensity: number;
   viewport: ViewportState;
   showGrid: boolean;
   showMetrics: boolean;
   isDrawing: boolean;
   drawValue: boolean;
+  onionSkinEnabled: boolean;
+  onionSkinFont: 'serif' | 'sans-serif';
+  onionSkinSize: number; // 0.5 to 2.0 scale factor
 }
 
 interface EditorActions {
@@ -25,6 +28,10 @@ interface EditorActions {
   toggleMetrics: () => void;
   setIsDrawing: (drawing: boolean) => void;
   setDrawValue: (value: boolean) => void;
+  setOnionSkinEnabled: (enabled: boolean) => void;
+  setOnionSkinFont: (font: 'serif' | 'sans-serif') => void;
+  toggleOnionSkinFont: () => void;
+  setOnionSkinSize: (size: number) => void;
 }
 
 type EditorStore = EditorState & EditorActions;
@@ -40,6 +47,9 @@ export const useEditorStore = create<EditorStore>()((set) => ({
   showMetrics: true,
   isDrawing: false,
   drawValue: true,
+  onionSkinEnabled: true,
+  onionSkinFont: 'sans-serif',
+  onionSkinSize: 1.0,
 
   setTool: (tool) => set({ activeTool: tool }),
   setSelectedGlyph: (id) => set({ selectedGlyphId: id }),
@@ -51,4 +61,8 @@ export const useEditorStore = create<EditorStore>()((set) => ({
   toggleMetrics: () => set((s) => ({ showMetrics: !s.showMetrics })),
   setIsDrawing: (drawing) => set({ isDrawing: drawing }),
   setDrawValue: (value) => set({ drawValue: value }),
+  setOnionSkinEnabled: (enabled) => set({ onionSkinEnabled: enabled }),
+  setOnionSkinFont: (font) => set({ onionSkinFont: font }),
+  toggleOnionSkinFont: () => set((s) => ({ onionSkinFont: s.onionSkinFont === 'serif' ? 'sans-serif' : 'serif' })),
+  setOnionSkinSize: (size) => set({ onionSkinSize: Math.max(0.3, Math.min(2, size)) }),
 }));

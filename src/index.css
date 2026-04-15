@@ -151,6 +151,71 @@ body {
   font-size: 9px;
 }
 
+/* Canvas size controls */
+.size-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.size-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+
+.size-input {
+  width: 48px;
+  font-family: var(--font-mono);
+  font-weight: var(--weight-light);
+  font-size: 11px;
+  background: transparent;
+  color: var(--color-fg);
+  border: var(--border);
+  padding: 3px 6px;
+  outline: none;
+  text-align: center;
+  -moz-appearance: textfield;
+}
+
+.size-input::-webkit-inner-spin-button,
+.size-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+}
+
+.size-input:focus {
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.size-x {
+  font-size: 10px;
+  opacity: 0.35;
+}
+
+/* Onion skin font input */
+.onion-font-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.onion-font-input {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-weight: var(--weight-light);
+  font-size: 11px;
+  background: transparent;
+  color: var(--color-fg);
+  border: var(--border);
+  padding: 3px 6px;
+  outline: none;
+}
+
+.onion-font-input:focus {
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
 .density-slider {
   display: flex;
   align-items: center;
@@ -286,6 +351,12 @@ body {
   padding: 0 var(--spacing-md);
   gap: var(--spacing-lg);
   flex-shrink: 0;
+}
+
+.statusbar-hint {
+  font-size: 10px;
+  opacity: 0.25;
+  margin-left: auto;
 }
 
 .statusbar-item {

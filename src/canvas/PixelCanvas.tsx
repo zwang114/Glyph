@@ -5,8 +5,8 @@ import type { Glyph } from '../types/font';
 import type { MirrorMode } from '../types/editor';
 import { drawShape, drawMetaballs } from '../engine/shapes';
 
-const GRID_LINE_COLOR = 'rgba(255, 255, 255, 0.08)';
-const METRIC_LINE_COLOR = 'rgba(255, 255, 255, 0.2)';
+const GRID_DOT_COLOR = 'rgba(255, 255, 255, 0.25)';
+
 const PIXEL_COLOR = '#ffffff';
 const BG_COLOR = '#000000';
 const HOVER_COLOR = 'rgba(255, 255, 255, 0.15)';
@@ -23,7 +23,13 @@ export function PixelCanvas() {
   const lineStartRef = useRef<{ row: number; col: number } | null>(null);
   const rectStartRef = useRef<{ row: number; col: number } | null>(null);
 
-  const getCellSize = useCallback(
+  // Zoom and pan
+  const zoomRef = useRef(1);
+  const panRef = useRef({ x: 0, y: 0 });
+  const isPanningRef = useRef(false);
+  const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
+
+  const getBaseSize = useCallback(
     (canvas: HTMLCanvasElement, glyph: Glyph) => {
       const padding = 40;
       const availW = canvas.width / devicePixelRatio - padding * 2;
@@ -33,13 +39,20 @@ export function PixelCanvas() {
     []
   );
 
+  const getCellSize = useCallback(
+    (canvas: HTMLCanvasElement, glyph: Glyph) => {
+      return getBaseSize(canvas, glyph) * zoomRef.current;
+    },
+    [getBaseSize]
+  );
+
   const getGridOrigin = useCallback(
     (canvas: HTMLCanvasElement, glyph: Glyph, cellSize: number) => {
       const totalW = glyph.gridWidth * cellSize;
       const totalH = glyph.gridHeight * cellSize;
       return {
-        x: (canvas.width / devicePixelRatio - totalW) / 2,
-        y: (canvas.height / devicePixelRatio - totalH) / 2,
+        x: (canvas.width / devicePixelRatio - totalW) / 2 + panRef.current.x,
+        y: (canvas.height / devicePixelRatio - totalH) / 2 + panRef.current.y,
       };
     },
     []
@@ -109,7 +122,8 @@ export function PixelCanvas() {
       return;
     }
 
-    const { showGrid, mirrorMode, activeTool, pixelShape, pixelDensity } =
+    const { showGrid, mirrorMode, activeTool, pixelShape, pixelDensity,
+      onionSkinEnabled, onionSkinFont, onionSkinSize } =
       useEditorStore.getState();
     const dpr = devicePixelRatio;
 
@@ -121,6 +135,40 @@ export function PixelCanvas() {
 
     const cellSize = getCellSize(canvas, glyph);
     const origin = getGridOrigin(canvas, glyph, cellSize);
+    const gridW = glyph.gridWidth * cellSize;
+    const gridH = glyph.gridHeight * cellSize;
+
+    // --- Canvas border (dotted) ---
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 4]);
+    ctx.strokeRect(
+      Math.round(origin.x) + 0.5,
+      Math.round(origin.y) + 0.5,
+      gridW,
+      gridH
+    );
+    ctx.setLineDash([]);
+
+    // --- Onion skin ---
+    if (onionSkinEnabled) {
+      const char = String.fromCharCode(glyph.unicode);
+      const fontSize = gridH * onionSkinSize;
+      ctx.save();
+      ctx.font = `${fontSize}px ${onionSkinFont}`;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.07)';
+      ctx.textBaseline = 'alphabetic';
+      ctx.textAlign = 'center';
+      // Measure actual glyph bounds to center visually
+      const metrics = ctx.measureText(char);
+      const glyphTop = metrics.actualBoundingBoxAscent;
+      const glyphBottom = metrics.actualBoundingBoxDescent;
+      const glyphVisualH = glyphTop + glyphBottom;
+      const centerX = origin.x + gridW / 2;
+      const centerY = origin.y + gridH / 2 + (glyphTop - glyphVisualH / 2);
+      ctx.fillText(char, centerX, centerY);
+      ctx.restore();
+    }
 
     // --- Draw filled pixels with active shape ---
     ctx.fillStyle = PIXEL_COLOR;
@@ -206,41 +254,20 @@ export function PixelCanvas() {
       ctx.setLineDash([]);
     }
 
-    // --- Grid lines ---
-    if (showGrid && cellSize > 4) {
-      ctx.strokeStyle = GRID_LINE_COLOR;
-      ctx.lineWidth = 1;
-      for (let c = 0; c <= glyph.gridWidth; c++) {
-        const x = origin.x + c * cellSize + 0.5;
-        ctx.beginPath();
-        ctx.moveTo(x, origin.y);
-        ctx.lineTo(x, origin.y + glyph.gridHeight * cellSize);
-        ctx.stroke();
-      }
-      for (let r = 0; r <= glyph.gridHeight; r++) {
-        const y = origin.y + r * cellSize + 0.5;
-        ctx.beginPath();
-        ctx.moveTo(origin.x, y);
-        ctx.lineTo(origin.x + glyph.gridWidth * cellSize, y);
-        ctx.stroke();
+    // --- Dot grid ---
+    if (showGrid) {
+      const canvasW = canvas.width / dpr;
+      const canvasH = canvas.height / dpr;
+      const dotRadius = 1;
+      ctx.fillStyle = GRID_DOT_COLOR;
+      for (let y = origin.y % cellSize; y <= canvasH; y += cellSize) {
+        for (let x = origin.x % cellSize; x <= canvasW; x += cellSize) {
+          ctx.beginPath();
+          ctx.arc(Math.round(x), Math.round(y), dotRadius, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
     }
-
-    // --- Outer border ---
-    ctx.strokeStyle = METRIC_LINE_COLOR;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(origin.x + 0.5, origin.y + 0.5, glyph.gridWidth * cellSize, glyph.gridHeight * cellSize);
-
-    // --- Baseline ---
-    const baselineRow = Math.round(glyph.gridHeight * 0.8);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
-    ctx.setLineDash([2, 3]);
-    const by = origin.y + baselineRow * cellSize;
-    ctx.beginPath();
-    ctx.moveTo(origin.x, by + 0.5);
-    ctx.lineTo(origin.x + glyph.gridWidth * cellSize, by + 0.5);
-    ctx.stroke();
-    ctx.setLineDash([]);
 
     ctx.restore();
   }, [getCellSize, getGridOrigin, getMirrorCells, getLineCells]);
@@ -275,9 +302,65 @@ export function PixelCanvas() {
     return () => { unsubFont(); unsubEditor(); };
   }, [scheduleRedraw]);
 
-  // --- Pointer handlers (unchanged logic, just forwarding) ---
+  // --- Wheel zoom (toward cursor) ---
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const glyphId = useEditorStore.getState().selectedGlyphId;
+      const glyph = glyphId ? useFontStore.getState().glyphs[glyphId] : null;
+      if (!glyph) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const canvasW = canvas.width / devicePixelRatio;
+      const canvasH = canvas.height / devicePixelRatio;
+      const base = getBaseSize(canvas, glyph);
+
+      const oldZoom = zoomRef.current;
+      const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+      const newZoom = Math.max(0.25, Math.min(10, oldZoom * factor));
+
+      // Compute full origin before zoom
+      const oldCenterX = (canvasW - glyph.gridWidth * base * oldZoom) / 2;
+      const oldCenterY = (canvasH - glyph.gridHeight * base * oldZoom) / 2;
+      const oldOriginX = oldCenterX + panRef.current.x;
+      const oldOriginY = oldCenterY + panRef.current.y;
+
+      // World point under cursor
+      const worldX = (mx - oldOriginX) / (base * oldZoom);
+      const worldY = (my - oldOriginY) / (base * oldZoom);
+
+      // Compute new center offset
+      const newCenterX = (canvasW - glyph.gridWidth * base * newZoom) / 2;
+      const newCenterY = (canvasH - glyph.gridHeight * base * newZoom) / 2;
+
+      // Solve for new pan so world point stays under cursor
+      panRef.current = {
+        x: mx - newCenterX - worldX * base * newZoom,
+        y: my - newCenterY - worldY * base * newZoom,
+      };
+      zoomRef.current = newZoom;
+      useEditorStore.getState().setViewport({ zoom: newZoom });
+      scheduleRedraw();
+    };
+    canvas.addEventListener('wheel', handleWheel, { passive: false });
+    return () => canvas.removeEventListener('wheel', handleWheel);
+  }, [scheduleRedraw]);
+
+  // --- Pointer handlers ---
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    // Middle-click or alt+click = pan
+    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+      isPanningRef.current = true;
+      panStartRef.current = { x: e.clientX, y: e.clientY, panX: panRef.current.x, panY: panRef.current.y };
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      return;
+    }
+
     const canvas = canvasRef.current;
     const glyphId = useEditorStore.getState().selectedGlyphId;
     if (!canvas || !glyphId) return;
@@ -310,6 +393,15 @@ export function PixelCanvas() {
   }, [screenToCell, getMirrorCells, scheduleRedraw]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (isPanningRef.current) {
+      panRef.current = {
+        x: panStartRef.current.panX + (e.clientX - panStartRef.current.x),
+        y: panStartRef.current.panY + (e.clientY - panStartRef.current.y),
+      };
+      scheduleRedraw();
+      return;
+    }
+
     const canvas = canvasRef.current;
     const glyphId = useEditorStore.getState().selectedGlyphId;
     if (!canvas || !glyphId) return;
@@ -338,6 +430,10 @@ export function PixelCanvas() {
   }, [screenToCell, getLineCells, getMirrorCells, scheduleRedraw]);
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    if (isPanningRef.current) {
+      isPanningRef.current = false;
+      return;
+    }
     if (!drawingRef.current) return;
     const canvas = canvasRef.current;
     const glyphId = useEditorStore.getState().selectedGlyphId;

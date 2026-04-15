@@ -1,9 +1,11 @@
 import { NavLink, Outlet, useParams } from 'react-router';
 import { useFontStore } from '../../stores/fontStore';
+import { useEditorStore } from '../../stores/editorStore';
 
 export function AppShell() {
   const params = useParams();
   const project = useFontStore((s) => s.project);
+  const viewport = useEditorStore((s) => s.viewport);
   const base = `/project/${params.id}`;
 
   return (
@@ -42,10 +44,10 @@ export function AppShell() {
 
       <footer className="statusbar">
         <span className="statusbar-item mono">
-          {project.unitsPerEm} UPM
+          Zoom {Math.round((viewport.zoom || 1) * 100)}%
         </span>
-        <span className="statusbar-item mono">
-          Asc {project.ascender} / Desc {project.descender}
+        <span className="statusbar-hint">
+          Scroll to zoom &middot; Alt+drag to pan
         </span>
       </footer>
     </div>

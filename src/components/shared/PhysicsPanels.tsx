@@ -11,7 +11,7 @@ interface PanelDef {
   height: number;
   color: string;
   title: string;
-  shape?: 'rect' | 'pen' | 'ticket' | 'snowman' | 'pill';
+  shape?: 'rect' | 'pen' | 'ticket' | 'snowman' | 'pill' | 'canvas' | 'onion' | 'pencil';
   children: React.ReactNode;
 }
 
@@ -61,6 +61,39 @@ function createPanelBody(panel: PanelDef, x: number, y: number): Matter.Body {
     return Matter.Bodies.rectangle(x, y, w, h, { ...bodyOpts, chamfer: { radius: 16 } });
   }
 
+  if (panel.shape === 'pencil') {
+    // Pencil: flat rect top + pointed tip bottom. Tip starts at 76.4% of height.
+    const tipStart = h * 0.7645;          // 269.904/353
+    const halfW = w / 2;
+    const halfH = h / 2;
+    const verts = [
+      { x: -halfW, y: -halfH },                        // top-left
+      { x: halfW, y: -halfH },                         // top-right
+      { x: halfW, y: -halfH + tipStart },              // right shoulder
+      { x: 0, y: halfH },                              // bottom tip
+      { x: -halfW, y: -halfH + tipStart },             // left shoulder
+    ];
+    const body = Matter.Bodies.fromVertices(x, y, [verts], bodyOpts);
+    if (body) return body;
+    return Matter.Bodies.rectangle(x, y, w, h, { ...bodyOpts, chamfer: { radius: 8 } });
+  }
+
+  if (panel.shape === 'canvas') {
+    // Rounded bar (notches are small — approximate with chamfered rect)
+    return Matter.Bodies.rectangle(x, y, w, h, {
+      ...bodyOpts,
+      chamfer: { radius: 8 },
+    });
+  }
+
+  if (panel.shape === 'onion') {
+    // Bulbous shape — approximate with large chamfer so corners round into a bulb
+    return Matter.Bodies.rectangle(x, y, w, h, {
+      ...bodyOpts,
+      chamfer: { radius: Math.min(w, h) / 2.2 },
+    });
+  }
+
   if (panel.shape === 'snowman') {
     // Approximate with rounded rectangle (concave snowman can't be a single body)
     return Matter.Bodies.rectangle(x, y, w, h, {
@@ -90,6 +123,18 @@ const TICKET_SVG_PATH = "M214.412 111.011C218.639 111.225 222 114.72 222 119V167
 // Snowman/figure-8 shape: small circle on top (r=65.5), large circle on bottom
 // (r=110.5), connected with concave curves. User-provided SVG at 221x310.
 const SNOWMAN_SVG_PATH = "M110.5 0C146.675 0 176 29.3253 176 65.5C176 79.4191 171.657 92.323 164.254 102.934C198.106 121.818 221 157.985 221 199.5C221 260.527 171.527 310 110.5 310C49.4725 310 0 260.527 0 199.5C0 157.985 22.8938 121.818 56.7451 102.934C49.3424 92.3231 45 79.4189 45 65.5C45 29.3253 74.3253 0 110.5 0Z";
+
+// Canvas size panel: wide rounded rectangle with 4 semi-circular notches (2 top,
+// 2 bottom) dividing it into three sections. User-provided SVG at 341x103.
+const CANVAS_SVG_PATH = "M95 0C99.4183 4.67273e-06 103 3.58173 103 8V19.9707C103 24.389 106.582 27.9707 111 27.9707C115.418 27.9707 119 24.389 119 19.9707V8C119 3.58173 122.582 8.38122e-06 127 0H214C218.418 0 222 3.58172 222 8V19.9707C222 24.389 225.582 27.9707 230 27.9707C234.418 27.9707 238 24.389 238 19.9707V8C238 3.58172 241.582 1.34754e-07 246 0H333C337.418 4.67273e-06 341 3.58173 341 8V95C341 99.4183 337.418 103 333 103H246C241.582 103 238 99.4183 238 95V83.0293C238 78.611 234.418 75.0293 230 75.0293C225.582 75.0293 222 78.611 222 83.0293V95C222 99.4183 218.418 103 214 103H127C122.582 103 119 99.4183 119 95V83.0293C119 78.611 115.418 75.0293 111 75.0293C106.582 75.0293 103 78.611 103 83.0293V95C103 99.4183 99.4183 103 95 103H8C3.58173 103 4.25813e-06 99.4183 0 95V8C5.49512e-07 3.58172 3.58172 1.34754e-07 8 0H95Z";
+
+// Onion skin panel: bulb/onion shape — pointed stem at top, round bulbous body,
+// flat base. User-provided SVG at 341x319.
+const ONION_SVG_PATH = "M193.978 16.4176C197.702 22.5181 203.971 26.5589 210.967 27.9845C285.597 43.193 341 99.5179 341 166.678C341 229.722 292.181 283.218 224.466 302.119C220.69 303.173 218 306.57 218 310.496C218 315.193 214.199 319 209.509 319H131.491C126.801 319 123 315.193 123 310.496C123 306.57 120.31 303.173 116.534 302.119C48.8188 283.218 0 229.722 0 166.678C0.000113463 99.5181 55.4026 43.1932 130.032 27.9845C137.028 26.5589 143.297 22.5183 147.021 16.4179L150.023 11.4993C159.382 -3.83324 181.617 -3.83308 190.976 11.4996L193.978 16.4996Z";
+
+// Pencil panel (redesigned tools): rectangle body at top with pointed tip at
+// bottom. User-provided SVG at 222x353, tip starts at y=269.904.
+const PENCIL_SVG_PATH = "M222 269.904C222 272.476 220.764 274.891 218.678 276.395L115.678 350.629C112.884 352.642 109.116 352.642 106.322 350.629L3.32227 276.395C1.23613 274.891 -2.24812e-07 272.476 0 269.904V8C2.06169e-06 3.58172 3.58172 1.04692e-07 8 0H214C218.418 0 222 3.58172 222 8V269.904Z";
 
 function buildPenPath(w: number, h: number): string {
   const bottomStraight = h - 7.861; // 210.139 - 202.139 = 8 for radius
@@ -346,6 +391,9 @@ export function PhysicsPanels({ panels, containerWidth, containerHeight }: Physi
         const isTicket = panel.shape === 'ticket';
         const isSnowman = panel.shape === 'snowman';
         const isPill = panel.shape === 'pill';
+        const isCanvas = panel.shape === 'canvas';
+        const isOnion = panel.shape === 'onion';
+        const isPencil = panel.shape === 'pencil';
         const dragIcon = (
           <div
             className={`floating-panel-drag-icon ${isPinned ? 'pinned' : ''}`}
@@ -374,6 +422,98 @@ export function PhysicsPanels({ panels, containerWidth, containerHeight }: Physi
                 <span className="pill-title">{panel.title}</span>
               </div>
               <div className="pill-body">{panel.children}</div>
+            </div>
+          );
+        }
+
+        if (isCanvas) {
+          const w = panel.width;
+          const h = panel.height;
+          return (
+            <div
+              key={panel.id}
+              ref={(el) => { panelRefs.current.set(panel.id, el); }}
+              className="floating-panel canvas-panel"
+              style={{
+                width: w,
+                height: h,
+                transformOrigin: 'center center',
+                pointerEvents: 'auto',
+              }}
+            >
+              <svg
+                width={w}
+                height={h}
+                viewBox="0 0 341 103"
+                preserveAspectRatio="none"
+                style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+              >
+                <path d={CANVAS_SVG_PATH} fill={panel.color} />
+              </svg>
+              <div className="canvas-panel-drag">{dragIcon}</div>
+              <div className="canvas-panel-body">{panel.children}</div>
+            </div>
+          );
+        }
+
+        if (isOnion) {
+          const w = panel.width;
+          const h = panel.height;
+          return (
+            <div
+              key={panel.id}
+              ref={(el) => { panelRefs.current.set(panel.id, el); }}
+              className="floating-panel onion-panel"
+              style={{
+                width: w,
+                height: h,
+                transformOrigin: 'center center',
+                pointerEvents: 'auto',
+              }}
+            >
+              <svg
+                width={w}
+                height={h}
+                viewBox="0 0 341 319"
+                preserveAspectRatio="none"
+                style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+              >
+                <path d={ONION_SVG_PATH} fill={panel.color} />
+              </svg>
+              <div className="onion-stem">{dragIcon}</div>
+              <div className="onion-title">{panel.title}</div>
+              <div className="onion-body">{panel.children}</div>
+            </div>
+          );
+        }
+
+        if (isPencil) {
+          const w = panel.width;
+          const h = panel.height;
+          return (
+            <div
+              key={panel.id}
+              ref={(el) => { panelRefs.current.set(panel.id, el); }}
+              className="floating-panel pencil-panel"
+              style={{
+                width: w,
+                height: h,
+                transformOrigin: 'center center',
+                pointerEvents: 'auto',
+              }}
+            >
+              <svg
+                width={w}
+                height={h}
+                viewBox="0 0 222 353"
+                preserveAspectRatio="none"
+                style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+              >
+                <path d={PENCIL_SVG_PATH} fill={panel.color} />
+              </svg>
+              <div className="pencil-drag">{dragIcon}</div>
+              <div className="pencil-title">{panel.title}</div>
+              <div className="pencil-body">{panel.children}</div>
             </div>
           );
         }

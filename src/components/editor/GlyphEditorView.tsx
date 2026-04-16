@@ -5,6 +5,7 @@ import { useEditorStore } from '../../stores/editorStore';
 import { useFontStore } from '../../stores/fontStore';
 import { BASIC_LATIN } from '../../utils/charset';
 import { PhysicsPanels } from '../shared/PhysicsPanels';
+import { VerticalLever } from '../shared/VerticalLever';
 import type { EditorTool, PixelShape } from '../../types/editor';
 
 export function GlyphEditorView() {
@@ -18,13 +19,33 @@ export function GlyphEditorView() {
   const mirrorMode = useEditorStore((s) => s.mirrorMode);
   const pixelShape = useEditorStore((s) => s.pixelShape);
   const pixelDensity = useEditorStore((s) => s.pixelDensity);
+  const onionSkinEnabled = useEditorStore((s) => s.onionSkinEnabled);
+  const onionSkinFont = useEditorStore((s) => s.onionSkinFont);
+  const onionSkinSize = useEditorStore((s) => s.onionSkinSize);
   const setTool = useEditorStore((s) => s.setTool);
   const setMirrorMode = useEditorStore((s) => s.setMirrorMode);
   const setPixelShape = useEditorStore((s) => s.setPixelShape);
   const setPixelDensity = useEditorStore((s) => s.setPixelDensity);
+  const setOnionSkinEnabled = useEditorStore((s) => s.setOnionSkinEnabled);
+  const toggleOnionSkinFont = useEditorStore((s) => s.toggleOnionSkinFont);
+  const setOnionSkinSize = useEditorStore((s) => s.setOnionSkinSize);
   const glyph = useFontStore((s) =>
     selectedGlyphId ? s.glyphs[selectedGlyphId] : null
   );
+  const resizeGlyph = useFontStore((s) => s.resizeGlyph);
+
+  const [wInput, setWInput] = useState(glyph?.gridWidth ?? 24);
+  const [hInput, setHInput] = useState(glyph?.gridHeight ?? 32);
+
+  useEffect(() => {
+    if (glyph) { setWInput(glyph.gridWidth); setHInput(glyph.gridHeight); }
+  }, [glyph?.gridWidth, glyph?.gridHeight]);
+
+  const applyCanvasSize = () => {
+    if (selectedGlyphId && (wInput !== glyph?.gridWidth || hInput !== glyph?.gridHeight)) {
+      resizeGlyph(selectedGlyphId, Math.max(4, wInput), Math.max(4, hInput));
+    }
+  };
 
   useEffect(() => {
     if (params.glyphId) setSelectedGlyph(params.glyphId);
@@ -89,14 +110,15 @@ export function GlyphEditorView() {
 
   const panelDefs = [
     {
-      id: 'tools', width: 222, height: 260, color: '#FF6200', title: 'PENS', shape: 'pen' as const,
+      id: 'tools', width: 222, height: 353, color: '#FF6200', title: 'BRUSH', shape: 'pencil' as const,
       children: (
-        <div className="fp-stack">
-          {tools.map((t) => (
-            <button key={t.key} className={`fp-btn ${activeTool === t.key ? 'fp-btn--active' : ''}`}
-              onClick={() => setTool(t.key)}>{t.label}</button>
-          ))}
-        </div>
+        <VerticalLever<EditorTool>
+          options={tools.map(t => ({ key: t.key, label: t.label }))}
+          value={activeTool === 'eraser' ? 'pixel' : activeTool}
+          onChange={setTool}
+          trackHeight={180}
+          trackWidth={20}
+        />
       ),
     },
     {
@@ -141,6 +163,73 @@ export function GlyphEditorView() {
             </div>
             <button className={`mirror-mode-btn mirror-mode-btn--full ${mirrorMode === 'both' ? 'mirror-mode-btn--active' : ''}`}
               onClick={() => setMirrorMode('both')}>H+V</button>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'canvas', width: 341, height: 103, color: '#FF92BE', title: 'Canvas Size', shape: 'canvas' as const,
+      children: (
+        <>
+          <div className="canvas-size-section">
+            <span className="canvas-size-label">W</span>
+            <input
+              type="number"
+              className="canvas-size-input"
+              value={wInput}
+              min={4}
+              max={128}
+              onChange={(e) => setWInput(Number(e.target.value))}
+              onBlur={applyCanvasSize}
+              onKeyDown={(e) => { if (e.key === 'Enter') applyCanvasSize(); }}
+            />
+          </div>
+          <div className="canvas-size-section canvas-size-x">×</div>
+          <div className="canvas-size-section">
+            <span className="canvas-size-label">H</span>
+            <input
+              type="number"
+              className="canvas-size-input"
+              value={hInput}
+              min={4}
+              max={128}
+              onChange={(e) => setHInput(Number(e.target.value))}
+              onBlur={applyCanvasSize}
+              onKeyDown={(e) => { if (e.key === 'Enter') applyCanvasSize(); }}
+            />
+          </div>
+        </>
+      ),
+    },
+    {
+      id: 'onion',
+      width: 341,
+      height: onionSkinEnabled ? 319 : 180,
+      color: '#FFF18B',
+      title: 'Onion Skin',
+      shape: 'onion' as const,
+      children: (
+        <div className={`onion-controls ${onionSkinEnabled ? 'onion-controls--on' : ''}`}>
+          <div className={`mirror-toggle ${onionSkinEnabled ? 'mirror-toggle--on' : ''}`}
+            onClick={() => setOnionSkinEnabled(!onionSkinEnabled)}>
+            <div className="mirror-toggle-thumb" />
+            <span className="mirror-toggle-label on">ON</span>
+            <span className="mirror-toggle-label off">OFF</span>
+          </div>
+          <div className="onion-extras">
+            <div className="onion-font-row">
+              <button className={`mirror-mode-btn ${onionSkinFont === 'serif' ? 'mirror-mode-btn--active' : ''}`}
+                onClick={toggleOnionSkinFont}>Serif</button>
+              <button className={`mirror-mode-btn ${onionSkinFont === 'sans-serif' ? 'mirror-mode-btn--active' : ''}`}
+                onClick={toggleOnionSkinFont}>Sans</button>
+            </div>
+            <div className="onion-size-row">
+              <span className="onion-size-label">Size</span>
+              <input type="range" min="30" max="200" value={Math.round(onionSkinSize * 100)}
+                onChange={(e) => setOnionSkinSize(Number(e.target.value) / 100)}
+                className="onion-slider" />
+              <span className="onion-size-value mono">{Math.round(onionSkinSize * 100)}%</span>
+            </div>
           </div>
         </div>
       ),

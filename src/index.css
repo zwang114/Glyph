@@ -1470,12 +1470,14 @@ body {
 
 .toolbar {
   height: var(--toolbar-height);
-  border-bottom: var(--border);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
   display: flex;
   align-items: center;
   padding: 0 var(--spacing-md);
   gap: var(--spacing-lg);
   flex-shrink: 0;
+  background: #FFFBF6;
+  color: #1a1a1a;
 }
 
 .toolbar-brand {
@@ -1484,7 +1486,7 @@ body {
   font-size: 13px;
   letter-spacing: 0.15em;
   text-decoration: none;
-  color: var(--color-fg);
+  color: #1a1a1a;
 }
 
 .toolbar-nav {
@@ -1500,17 +1502,17 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   text-decoration: none;
-  color: var(--color-fg);
+  color: #1a1a1a;
   padding: 0 var(--spacing-md);
   display: flex;
   align-items: center;
-  border-right: var(--border-light);
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
   opacity: 0.4;
   transition: opacity 0.1s;
 }
 
 .toolbar-link:first-child {
-  border-left: var(--border-light);
+  border-left: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 .toolbar-link:hover {
@@ -1519,7 +1521,7 @@ body {
 
 .toolbar-link.active {
   opacity: 1;
-  border-bottom: 2px solid var(--color-fg);
+  border-bottom: 2px solid #1a1a1a;
 }
 
 .toolbar-meta {
@@ -1535,12 +1537,14 @@ body {
 
 .statusbar {
   height: var(--statusbar-height);
-  border-top: var(--border);
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
   display: flex;
   align-items: center;
   padding: 0 var(--spacing-md);
   gap: var(--spacing-lg);
   flex-shrink: 0;
+  background: #FFFBF6;
+  color: #1a1a1a;
 }
 
 .statusbar-hint {

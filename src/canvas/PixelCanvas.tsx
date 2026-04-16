@@ -5,11 +5,11 @@ import type { Glyph } from '../types/font';
 import type { MirrorMode } from '../types/editor';
 import { drawShape, drawMetaballs } from '../engine/shapes';
 
-const GRID_DOT_COLOR = 'rgba(255, 255, 255, 0.25)';
+const GRID_DOT_COLOR = 'rgba(0, 0, 0, 0.22)';
 
-const PIXEL_COLOR = '#ffffff';
-const BG_COLOR = '#000000';
-const HOVER_COLOR = 'rgba(255, 255, 255, 0.15)';
+const PIXEL_COLOR = '#1a1a1a';
+const BG_COLOR = '#FFFBF6';
+const HOVER_COLOR = 'rgba(0, 0, 0, 0.08)';
 
 export function PixelCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -139,7 +139,7 @@ export function PixelCanvas() {
     const gridH = glyph.gridHeight * cellSize;
 
     // --- Canvas border (dotted) ---
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
     ctx.lineWidth = 1;
     ctx.setLineDash([2, 4]);
     ctx.strokeRect(
@@ -156,7 +156,7 @@ export function PixelCanvas() {
       const fontSize = gridH * onionSkinSize;
       ctx.save();
       ctx.font = `${fontSize}px ${onionSkinFont}`;
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.07)';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.06)';
       ctx.textBaseline = 'alphabetic';
       ctx.textAlign = 'center';
       // Measure actual glyph bounds to center visually
@@ -234,7 +234,7 @@ export function PixelCanvas() {
 
     // --- Mirror axis lines ---
     if (mirrorMode !== 'none') {
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
       if (mirrorMode === 'horizontal' || mirrorMode === 'both') {

@@ -327,13 +327,13 @@ function PhysicsPanelsInner(
     );
     Matter.Composite.add(engine.world, [floor, ceiling, leftWall, rightWall]);
 
-    const startX = 140;
-    let startY = 150;
     for (const panel of panels) {
-      const body = createPanelBody(panel, startX, startY);
+      const margin = 60;
+      const spawnX = margin + Math.random() * (containerWidth - panel.width - margin * 2);
+      const spawnY = margin + Math.random() * (containerHeight - panel.height - margin * 2);
+      const body = createPanelBody(panel, spawnX, spawnY);
       Matter.Composite.add(engine.world, body);
       bodiesRef.current.set(panel.id, body);
-      startY += panel.height + 30;
     }
 
     const mouseBody = Matter.Bodies.circle(0, 0, 1, { isStatic: true, collisionFilter: { mask: 0 } });

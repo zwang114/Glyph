@@ -301,7 +301,7 @@ body {
   font-weight: 700;
 }
 
-/* Banner panel (Brush tool — rect top, pointed bottom) */
+/* Banner panel (Brush tool — arrow top, rounded bottom) */
 .banner-panel {
   background: transparent !important;
   border-radius: 0 !important;
@@ -311,12 +311,12 @@ body {
 
 .banner-header {
   position: absolute;
-  top: 16px;
+  top: 84px;
   left: 16px;
   right: 16px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   z-index: 2;
 }
 
@@ -331,10 +331,10 @@ body {
 
 .banner-body {
   position: absolute;
-  top: 48px;
+  top: 110px;
   left: 16px;
   right: 16px;
-  bottom: 73px; /* leave room for the pointed tip */
+  bottom: 16px;
   display: flex;
   justify-content: center;
   align-items: center;

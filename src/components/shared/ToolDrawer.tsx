@@ -26,7 +26,7 @@ const SHAPE_SVGS: Record<string, { path: string; viewBox: string }> = {
   canvas:   { path: CANVAS_SVG_PATH,   viewBox: '0 0 341 103' },
   onion:    { path: ONION_SVG_PATH_V2, viewBox: '0 0 320 305' },
   pencil:   { path: PENCIL_SVG_PATH,   viewBox: '0 0 222 353' },
-  banner:   { path: BANNER_SVG_PATH,   viewBox: '0 0 222 353' },
+  banner:   { path: BANNER_SVG_PATH,   viewBox: '0 0 222 270' },
   dumbbell: { path: DUMBBELL_SVG_PATH, viewBox: '0 0 222 368' },
 };
 
@@ -40,7 +40,8 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
   const [offset, setOffset] = useState(0);
   const dragStartRef = useRef<{ startX: number; startOffset: number } | null>(null);
 
-  // Panel drag-out state
+  // Panel drag state
+  const [physicsDragging, setPhysicsDragging] = useState(false);
   const [dragOutPanel, setDragOutPanel] = useState<string | null>(null);
   const [dragOutPos, setDragOutPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const dragOutStartRef = useRef<{ startX: number; startY: number; panelX: number; panelY: number } | null>(null);
@@ -62,7 +63,7 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
   const panelDragRef = useRef<{ id: string; constraint: Matter.Constraint } | null>(null);
   const mouseBodyRef = useRef<Matter.Body | null>(null);
 
-  // Initialize physics engine
+  // Initialize physics engine — tuned to match the canvas PhysicsPanels feel
   useEffect(() => {
     const engine = Matter.Engine.create({
       gravity: { x: 0, y: 1, scale: 0.001 },
@@ -70,23 +71,19 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
     engineRef.current = engine;
 
     const wallThickness = 60;
-    // Walls: floor, left, right — no ceiling (panels fall in from top)
+    const wallOpts = { isStatic: true, restitution: 0.4, friction: 0.3 };
     const floor = Matter.Bodies.rectangle(
-      drawerWidth / 2, containerHeight + wallThickness / 2, drawerWidth * 2, wallThickness,
-      { isStatic: true, restitution: 0.3, friction: 0.8 }
+      drawerWidth / 2, containerHeight + wallThickness / 2, drawerWidth * 2, wallThickness, wallOpts
     );
     const left = Matter.Bodies.rectangle(
-      -wallThickness / 2, containerHeight / 2, wallThickness, containerHeight * 2,
-      { isStatic: true, restitution: 0.3 }
+      -wallThickness / 2, containerHeight / 2, wallThickness, containerHeight * 2, wallOpts
     );
     const right = Matter.Bodies.rectangle(
-      drawerWidth + wallThickness / 2, containerHeight / 2, wallThickness, containerHeight * 2,
-      { isStatic: true, restitution: 0.3 }
+      drawerWidth + wallThickness / 2, containerHeight / 2, wallThickness, containerHeight * 2, wallOpts
     );
     Matter.Composite.add(engine.world, [floor, left, right]);
     wallsRef.current = { floor, left, right };
 
-    // Mouse body for drag constraints
     const mouseBody = Matter.Bodies.circle(0, 0, 1, { isStatic: true, collisionFilter: { mask: 0 } });
     Matter.Composite.add(engine.world, mouseBody);
     mouseBodyRef.current = mouseBody;
@@ -99,7 +96,7 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
       lastTime = now;
       Matter.Engine.update(engine, delta);
 
-      // Clamp bodies to drawer bounds
+      // Soft clamp — nudge bodies back in bounds instead of teleporting
       const currentPanels = panelsRef.current;
       for (const [id, body] of bodiesRef.current) {
         const panel = currentPanels.find((p) => p.id === id);
@@ -110,7 +107,11 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
         const by = Math.max(halfH, Math.min(containerHeight - halfH, body.position.y));
         if (bx !== body.position.x || by !== body.position.y) {
           Matter.Body.setPosition(body, { x: bx, y: by });
-          Matter.Body.setVelocity(body, { x: 0, y: 0 });
+          // Only dampen, don't zero — preserves momentum
+          Matter.Body.setVelocity(body, {
+            x: body.velocity.x * 0.5,
+            y: body.velocity.y * 0.5,
+          });
         }
       }
 
@@ -118,7 +119,7 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
       let anyMoving = false;
       for (const [id, body] of bodiesRef.current) {
         const speed = Math.abs(body.velocity.x) + Math.abs(body.velocity.y) + Math.abs(body.angularVelocity);
-        if (speed > 0.5) anyMoving = true;
+        if (speed > 0.3) anyMoving = true;
         const el = panelElsRef.current.get(id);
         const panel = currentPanels.find((p) => p.id === id);
         if (el && panel) {
@@ -128,7 +129,6 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
         }
       }
 
-      // Auto-pause when at rest
       if (!anyMoving && !panelDragRef.current) {
         restFrames++;
         if (restFrames > 60 && loopRef.current !== null) {
@@ -159,34 +159,41 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
     };
   }, [drawerWidth, containerHeight]);
 
-  // Add/remove bodies when panels change
+  // Add/remove bodies when panels change — use same physics as canvas
   useEffect(() => {
     const engine = engineRef.current;
     if (!engine) return;
 
-    // Add new panels at their drop position (or default if none)
+    const bodyOpts = {
+      restitution: 0.25,
+      friction: 0.3,
+      frictionAir: 0.015,
+      density: 0.002,
+    };
+
     for (const panel of panels) {
       if (!bodiesRef.current.has(panel.id)) {
         let x: number;
         let y: number;
         const dropPos = dropPositions?.get(panel.id);
         if (dropPos) {
-          // Use the canvas drop position — it's already in the drawer's coordinate space
-          // since the drawer overlaps the left side of the canvas
           x = Math.max(panel.width / 2, Math.min(drawerWidth - panel.width / 2, dropPos.x));
           y = Math.max(panel.height / 2, Math.min(containerHeight - panel.height / 2, dropPos.y));
-          dropPositions?.delete(panel.id); // consume the position
+          dropPositions?.delete(panel.id);
         } else {
-          // No drop position (e.g. restored from localStorage) — drop from top
           x = Math.random() * (drawerWidth - panel.width) + panel.width / 2;
           y = -panel.height;
         }
+
+        // Use chamfer radius based on shape for better collision matching
+        let chamferRadius = 16;
+        if (panel.shape === 'pill') chamferRadius = Math.min(panel.width, panel.height) / 2 - 1;
+        else if (panel.shape === 'onion') chamferRadius = Math.min(panel.width, panel.height) / 3;
+        else if (panel.shape === 'banner' || panel.shape === 'pencil') chamferRadius = 8;
+
         const body = Matter.Bodies.rectangle(x, y, panel.width, panel.height, {
-          restitution: 0.25,
-          friction: 0.6,
-          frictionAir: 0.02,
-          density: 0.002,
-          chamfer: { radius: 16 },
+          ...bodyOpts,
+          chamfer: { radius: chamferRadius },
         });
         Matter.Composite.add(engine.world, body);
         bodiesRef.current.set(panel.id, body);
@@ -194,7 +201,6 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
       }
     }
 
-    // Remove panels that are no longer stored
     const panelIds = new Set(panels.map((p) => p.id));
     for (const [id, body] of bodiesRef.current) {
       if (!panelIds.has(id)) {
@@ -205,21 +211,20 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
     }
   }, [panels, drawerWidth]);
 
-  // React to drawer sliding — apply horizontal force based on velocity
+  // React to drawer sliding — stronger force for natural feel
   useEffect(() => {
     const prevOffset = prevOffsetRef.current;
     const velocity = offset - prevOffset;
     prevOffsetRef.current = offset;
 
-    if (Math.abs(velocity) < 1) return;
+    if (Math.abs(velocity) < 0.5) return;
 
     const engine = engineRef.current;
     if (!engine) return;
 
-    // Apply force proportional to drawer velocity
     for (const [, body] of bodiesRef.current) {
       Matter.Body.applyForce(body, body.position, {
-        x: velocity * 0.0002 * body.mass,
+        x: velocity * 0.0005 * body.mass,
         y: 0,
       });
     }
@@ -253,79 +258,135 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
     dragStartRef.current = null;
   }, []);
 
-  // Panel drag-out: direct DOM drag (no physics constraint — smooth 1:1 tracking)
+  // Panel drag: starts with physics constraint inside drawer,
+  // transitions to direct DOM ghost when cursor crosses drawer edge
   const handlePanelDragStart = useCallback((e: React.PointerEvent, panelId: string) => {
     e.stopPropagation();
     e.preventDefault();
 
-    const panel = panelsRef.current.find((p) => p.id === panelId);
-    const pw = panel?.width ?? 0;
-    const ph = panel?.height ?? 0;
+    const engine = engineRef.current;
+    const body = bodiesRef.current.get(panelId);
+    const mouseBody = mouseBodyRef.current;
+    if (!engine || !body || !mouseBody) return;
 
-    setDragOutPanel(panelId);
-    setDragOutPos({ x: e.clientX - pw / 2, y: e.clientY - ph / 2 });
-    dragOutStartRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      panelX: e.clientX - pw / 2,
-      panelY: e.clientY - ph / 2,
-    };
+    // Position mouse body at cursor (relative to drawer)
+    const drawerEl = (e.currentTarget as HTMLElement).closest('.tool-drawer');
+    const drawerRect = drawerEl?.getBoundingClientRect();
+    const localX = e.clientX - (drawerRect?.left ?? 0);
+    const localY = e.clientY - (drawerRect?.top ?? 0);
+
+    Matter.Body.setPosition(mouseBody, { x: localX, y: localY });
+
+    const constraint = Matter.Constraint.create({
+      bodyA: mouseBody,
+      bodyB: body,
+      pointB: {
+        x: localX - body.position.x,
+        y: localY - body.position.y,
+      },
+      stiffness: 0.7, damping: 0.3, length: 0,
+    });
+
+    Matter.Composite.add(engine.world, constraint);
+    panelDragRef.current = { id: panelId, constraint };
+    setPhysicsDragging(true);
+    wakeRef.current();
+
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }, []);
 
-  const handlePanelDragMove = useCallback((e: React.PointerEvent) => {
-    if (!dragOutStartRef.current || !dragOutPanel) return;
-    const dx = e.clientX - dragOutStartRef.current.startX;
-    const dy = e.clientY - dragOutStartRef.current.startY;
-    setDragOutPos({
-      x: dragOutStartRef.current.panelX + dx,
-      y: dragOutStartRef.current.panelY + dy,
-    });
-  }, [dragOutPanel]);
-
-  const handlePanelDragUp = useCallback((e: React.PointerEvent) => {
-    if (!dragOutPanel) return;
-
-    // Check if dropped outside the drawer
-    if (e.clientX > offset) {
-      // Dropped on canvas — restore panel to physics world
-      const canvasX = e.clientX;
-      const canvasY = e.clientY - 44;
-      onPanelDraggedOut(dragOutPanel, canvasX, canvasY);
-    }
-
-    setDragOutPanel(null);
-    dragOutStartRef.current = null;
-  }, [dragOutPanel, offset, onPanelDraggedOut]);
-
-  // Global pointer events during drag-out (so cursor can leave the drawer)
+  // Global pointer events for panel drag (physics inside drawer + drag-out)
   useEffect(() => {
-    if (!dragOutPanel) return;
+    if (!physicsDragging && !dragOutPanel) return;
+
     const move = (e: PointerEvent) => {
-      if (!dragOutStartRef.current) return;
-      const dx = e.clientX - dragOutStartRef.current.startX;
-      const dy = e.clientY - dragOutStartRef.current.startY;
-      setDragOutPos({
-        x: dragOutStartRef.current.panelX + dx,
-        y: dragOutStartRef.current.panelY + dy,
-      });
-    };
-    const up = (e: PointerEvent) => {
-      if (dragOutPanel && e.clientX > offset) {
-        const canvasX = e.clientX;
-        const canvasY = e.clientY - 44;
-        onPanelDraggedOut(dragOutPanel, canvasX, canvasY);
+      // If in drag-out mode (ghost), track cursor
+      if (dragOutPanel && dragOutStartRef.current) {
+        const dx = e.clientX - dragOutStartRef.current.startX;
+        const dy = e.clientY - dragOutStartRef.current.startY;
+        setDragOutPos({
+          x: dragOutStartRef.current.panelX + dx,
+          y: dragOutStartRef.current.panelY + dy,
+        });
+        return;
       }
-      setDragOutPanel(null);
-      dragOutStartRef.current = null;
+
+      // Physics drag inside drawer
+      if (!panelDragRef.current) return;
+      const engine = engineRef.current;
+      const mouseBody = mouseBodyRef.current;
+      const drawerEl = document.querySelector('.tool-drawer');
+      if (!engine || !mouseBody || !drawerEl) return;
+
+      const drawerRect = drawerEl.getBoundingClientRect();
+      const localX = e.clientX - drawerRect.left;
+      const localY = e.clientY - drawerRect.top;
+
+      Matter.Body.setPosition(mouseBody, { x: localX, y: localY });
+      wakeRef.current();
+
+      // If cursor crosses right edge of drawer, transition to drag-out
+      if (e.clientX > offset) {
+        const panelId = panelDragRef.current.id;
+        const body = bodiesRef.current.get(panelId);
+        const panel = panelsRef.current.find((p) => p.id === panelId);
+
+        // Remove physics constraint
+        Matter.Composite.remove(engine.world, panelDragRef.current.constraint);
+        panelDragRef.current = null;
+        setPhysicsDragging(false);
+
+        // Remove physics body
+        if (body) {
+          Matter.Composite.remove(engine.world, body);
+          bodiesRef.current.delete(panelId);
+        }
+
+        const pw = panel?.width ?? 0;
+        const ph = panel?.height ?? 0;
+
+        setDragOutPanel(panelId);
+        setDragOutPos({ x: e.clientX - pw / 2, y: e.clientY - ph / 2 });
+        dragOutStartRef.current = {
+          startX: e.clientX,
+          startY: e.clientY,
+          panelX: e.clientX - pw / 2,
+          panelY: e.clientY - ph / 2,
+        };
+      }
     };
+
+    const up = (e: PointerEvent) => {
+      const engine = engineRef.current;
+
+      // If in drag-out mode, finalize
+      if (dragOutPanel) {
+        if (e.clientX > offset) {
+          const canvasX = e.clientX;
+          const canvasY = e.clientY - 44;
+          onPanelDraggedOut(dragOutPanel, canvasX, canvasY);
+        }
+        setDragOutPanel(null);
+        dragOutStartRef.current = null;
+        return;
+      }
+
+      // Release physics constraint
+      if (panelDragRef.current && engine) {
+        Matter.Composite.remove(engine.world, panelDragRef.current.constraint);
+        panelDragRef.current = null;
+        setPhysicsDragging(false);
+        wakeRef.current();
+      }
+    };
+
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
     return () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
     };
-  }, [dragOutPanel, offset, onPanelDraggedOut]);
+  }, [physicsDragging, dragOutPanel, offset, onPanelDraggedOut]);
 
   const translateX = offset - drawerWidth;
 
@@ -351,13 +412,11 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
                 height: panel.height,
                 position: 'absolute',
                 transformOrigin: 'center center',
+                cursor: 'grab',
               }}
+              onPointerDown={(e) => handlePanelDragStart(e, panel.id)}
             >
               <DrawerPanelShape panel={panel} />
-              <div
-                className="drawer-panel-drag-handle"
-                onPointerDown={(e) => handlePanelDragStart(e, panel.id)}
-              />
             </div>
           ))}
         </div>
@@ -413,7 +472,6 @@ function DrawerPanelShape({ panel }: { panel: PanelDef }) {
         }}
       >
         <div className="pill-header">
-          <div className="floating-panel-drag-icon" />
           <span className="pill-title">{panel.title}</span>
         </div>
         <div className="pill-body">{panel.children}</div>
@@ -446,15 +504,12 @@ function DrawerPanelShape({ panel }: { panel: PanelDef }) {
 }
 
 function renderShapeInner(panel: PanelDef): React.ReactNode {
-  const dragIcon = <div className="floating-panel-drag-icon" />;
-
   switch (panel.shape) {
     case 'banner':
       return (
         <>
           <div className="banner-header">
             <span className="banner-title">{panel.title}</span>
-            {dragIcon}
           </div>
           <div className="banner-body">{panel.children}</div>
         </>
@@ -464,7 +519,6 @@ function renderShapeInner(panel: PanelDef): React.ReactNode {
         <>
           <div className="dumbbell-header">
             <span className="dumbbell-title">{panel.title}</span>
-            {dragIcon}
           </div>
           <div className="dumbbell-body">{panel.children}</div>
         </>
@@ -472,7 +526,6 @@ function renderShapeInner(panel: PanelDef): React.ReactNode {
     case 'canvas':
       return (
         <>
-          <div className="canvas-panel-drag">{dragIcon}</div>
           <div className="canvas-panel-label">CANVAS</div>
           <div className="canvas-panel-body">{panel.children}</div>
         </>
@@ -481,7 +534,6 @@ function renderShapeInner(panel: PanelDef): React.ReactNode {
       return (
         <>
           <div className="onion-header">
-            {dragIcon}
             <span className="onion-title">{panel.title}</span>
           </div>
           <div className="onion-body">{panel.children}</div>
@@ -490,7 +542,6 @@ function renderShapeInner(panel: PanelDef): React.ReactNode {
     case 'pencil':
       return (
         <>
-          <div className="pencil-drag">{dragIcon}</div>
           <div className="pencil-title">{panel.title}</div>
           <div className="pencil-body">{panel.children}</div>
         </>
@@ -499,7 +550,6 @@ function renderShapeInner(panel: PanelDef): React.ReactNode {
       return (
         <>
           <div className="snowman-head">
-            <div className="snowman-drag">{dragIcon}</div>
             <div className="snowman-title">{panel.title}</div>
           </div>
           <div className="snowman-body">{panel.children}</div>
@@ -510,7 +560,6 @@ function renderShapeInner(panel: PanelDef): React.ReactNode {
         <>
           <div className="floating-panel-header ticket-header">
             <span className="floating-panel-title">{panel.title}</span>
-            {dragIcon}
           </div>
           <div className="ticket-body">{panel.children}</div>
         </>
@@ -520,7 +569,6 @@ function renderShapeInner(panel: PanelDef): React.ReactNode {
         <>
           <div className="floating-panel-header">
             <span className="floating-panel-title">{panel.title}</span>
-            {dragIcon}
           </div>
           <div className="floating-panel-body">{panel.children}</div>
         </>

@@ -86,18 +86,17 @@ function createPanelBody(panel: PanelDef, x: number, y: number): Matter.Body {
   }
 
   if (panel.shape === 'banner') {
-    // Banner: flat rect top + pointed tip at bottom (inverted pencil).
-    // The tip section is the bottom ~27% (96/353 ≈ 0.272).
-    const tipFraction = 96 / 353;
-    const tipStartY = h * (1 - tipFraction); // where the angled sides begin
+    // Banner: upward-pointing arrow top (house shape) + rect body with rounded bottom.
+    // Topper is ~31% of height (84/270), peak at center top.
+    const topperH = h * 0.311; // 84/270
     const halfW = w / 2;
     const halfH = h / 2;
     const verts = [
-      { x: -halfW, y: -halfH },                // top-left
-      { x: halfW, y: -halfH },                 // top-right
-      { x: halfW, y: -halfH + tipStartY },     // right shoulder
-      { x: 0, y: halfH },                      // bottom tip
-      { x: -halfW, y: -halfH + tipStartY },    // left shoulder
+      { x: 0, y: -halfH },                     // peak (top center)
+      { x: halfW, y: -halfH + topperH },        // right shoulder
+      { x: halfW, y: halfH },                   // bottom-right
+      { x: -halfW, y: halfH },                  // bottom-left
+      { x: -halfW, y: -halfH + topperH },       // left shoulder
     ];
     const body = Matter.Bodies.fromVertices(x, y, [verts], bodyOpts);
     if (body) return body;
@@ -105,19 +104,52 @@ function createPanelBody(panel: PanelDef, x: number, y: number): Matter.Body {
   }
 
   if (panel.shape === 'canvas') {
-    // Rounded bar (notches are small — approximate with chamfered rect)
+    // Wide bar with notch cutouts — use rectangle matching the visual bounds
     return Matter.Bodies.rectangle(x, y, w, h, {
       ...bodyOpts,
-      chamfer: { radius: 8 },
+      chamfer: { radius: Math.min(h / 2 - 2, 12) },
     });
   }
 
   if (panel.shape === 'onion') {
-    // Bulbous shape — approximate with large chamfer so corners round into a bulb
-    return Matter.Bodies.rectangle(x, y, w, h, {
-      ...bodyOpts,
-      chamfer: { radius: Math.min(w, h) / 2.2 },
-    });
+    // Onion bulb: wide elliptical body + narrow stem at top + connector at bottom
+    // Approximate with an ellipse-like polygon
+    const halfW = w / 2;
+    const halfH = h / 2;
+    const stemH = 28;   // stem height at top
+    const stemW = 40;   // stem width
+    const connH = 17;   // connector at bottom
+    const bulbTop = -halfH + stemH;
+    const bulbBottom = halfH - connH;
+    const bulbH = bulbBottom - bulbTop;
+    const bulbCY = (bulbTop + bulbBottom) / 2;
+    const bulbRX = halfW;
+    const bulbRY = bulbH / 2;
+    // Generate ellipse vertices for the bulb
+    const steps = 16;
+    const verts: { x: number; y: number }[] = [];
+    // Stem top
+    verts.push({ x: -stemW / 2, y: -halfH });
+    verts.push({ x: stemW / 2, y: -halfH });
+    // Right side of bulb (top to bottom)
+    for (let i = 0; i <= steps; i++) {
+      const angle = -Math.PI / 2 + (Math.PI * i) / steps;
+      verts.push({
+        x: Math.cos(angle) * bulbRX,
+        y: bulbCY + Math.sin(angle) * bulbRY,
+      });
+    }
+    // Left side of bulb (bottom to top)
+    for (let i = 0; i <= steps; i++) {
+      const angle = Math.PI / 2 + (Math.PI * i) / steps;
+      verts.push({
+        x: Math.cos(angle) * bulbRX,
+        y: bulbCY + Math.sin(angle) * bulbRY,
+      });
+    }
+    const body = Matter.Bodies.fromVertices(x, y, [verts], bodyOpts);
+    if (body) return body;
+    return Matter.Bodies.rectangle(x, y, w, h, { ...bodyOpts, chamfer: { radius: Math.min(w, h) / 2.2 } });
   }
 
   if (panel.shape === 'snowman') {
@@ -129,7 +161,34 @@ function createPanelBody(panel: PanelDef, x: number, y: number): Matter.Body {
   }
 
   if (panel.shape === 'dumbbell') {
-    // Two-section panel — approximate with rounded rectangle
+    // Dumbbell: two rounded rects connected by a narrow bridge
+    const halfW = w / 2;
+    const halfH = h / 2;
+    // Top section ~57%, bottom ~35%, bridge ~8%
+    const topH = h * 0.57;
+    const bridgeH = h * 0.08;
+    const bottomH = h * 0.35;
+    const bridgeW = w * 0.4; // narrow middle
+    const verts = [
+      // Top section
+      { x: -halfW, y: -halfH },
+      { x: halfW, y: -halfH },
+      { x: halfW, y: -halfH + topH },
+      // Bridge right
+      { x: bridgeW / 2, y: -halfH + topH },
+      { x: bridgeW / 2, y: -halfH + topH + bridgeH },
+      // Bottom section
+      { x: halfW, y: -halfH + topH + bridgeH },
+      { x: halfW, y: halfH },
+      { x: -halfW, y: halfH },
+      { x: -halfW, y: -halfH + topH + bridgeH },
+      // Bridge left
+      { x: -bridgeW / 2, y: -halfH + topH + bridgeH },
+      { x: -bridgeW / 2, y: -halfH + topH },
+      { x: -halfW, y: -halfH + topH },
+    ];
+    const body = Matter.Bodies.fromVertices(x, y, [verts], bodyOpts);
+    if (body) return body;
     return Matter.Bodies.rectangle(x, y, w, h, { ...bodyOpts, chamfer: { radius: 16 } });
   }
 
@@ -205,7 +264,20 @@ export const PENCIL_SVG_PATH ="M222 269.904C222 272.476 220.764 274.891 218.678 
 // and a downward-pointing triangular tip at the bottom. Reuses the pencil tip
 // geometry (from y=269.904 to y=353) but with a flat rectangular top (y=0 to
 // y=269.904). SVG viewBox 0 0 222 353.
-export const BANNER_SVG_PATH ="M0 8C0 3.582 3.582 0 8 0H214C218.418 0 222 3.582 222 8V269.904C222 272.476 220.764 274.891 218.678 276.395L115.678 350.629C112.884 352.642 109.116 352.642 106.322 350.629L3.322 276.395C1.236 274.891 0 272.476 0 269.904V8Z";
+// Banner: upward-pointing arrow top + rectangular body with rounded bottom corners
+// Topper (triangle): 222x84, Body: 222x186, Total: 222x270
+export const BANNER_SVG_PATH = [
+  // Topper triangle (pointing up) — starts at the peak
+  'M106.322 1.510C109.116 -0.503 112.884 -0.503 115.678 1.510',
+  'L218.678 75.744C220.764 77.248 222 79.663 222 82.234V83.139',
+  // Right side down to body, rounded bottom-right corner
+  'V262C222 266.418 218.418 270 214 270',
+  // Bottom edge
+  'H8C3.582 270 0 266.418 0 262',
+  // Left side up to topper
+  'V83.139V82.234C0 79.663 1.236 77.248 3.322 75.744',
+  'L106.322 1.510Z',
+].join('');
 
 // Dumbbell panel: single unified SVG path — two rounded rects connected by a
 // bridge with circular notches on each side. ViewBox 0 0 222 368.
@@ -361,7 +433,7 @@ function PhysicsPanelsInner(
 
       // Clamp so panel edges stay within container (center clamp = halfSize)
       for (const [id, body] of bodiesRef.current) {
-        const panel = panels.find((p) => p.id === id);
+        const panel = panelsRef.current.find((p) => p.id === id);
         if (!panel) continue;
         const halfW = panel.width / 2;
         const halfH = panel.height / 2;
@@ -379,7 +451,7 @@ function PhysicsPanelsInner(
         const speed = Math.abs(body.velocity.x) + Math.abs(body.velocity.y) + Math.abs(body.angularVelocity);
         if (speed > 0.5) anyMoving = true;
         const el = panelRefs.current.get(id);
-        const panel = panels.find((p) => p.id === id);
+        const panel = panelsRef.current.find((p) => p.id === id);
         if (el && panel) {
           el.style.left = `${body.position.x - panel.width / 2}px`;
           el.style.top = `${body.position.y - panel.height / 2}px`;
@@ -493,6 +565,10 @@ function PhysicsPanelsInner(
   }));
 
   const handleDragStart = useCallback((e: React.PointerEvent, panelId: string) => {
+    // Don't start drag if clicking on interactive elements (buttons, inputs, dials, sliders)
+    const target = e.target as HTMLElement;
+    if (target.closest('button, input, .radial-dial, .radial-btn, .density-slider, .onion-toggle-btn, .canvas-input')) return;
+
     e.stopPropagation();
     if (pinned.has(panelId)) return;
 
@@ -515,7 +591,7 @@ function PhysicsPanelsInner(
 
     Matter.Composite.add(engine.world, constraint);
     dragRef.current = { id: panelId, constraint };
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     setDraggingPanelId(panelId);
     wakeRef.current();
   }, [pinned]);
@@ -588,14 +664,13 @@ function PhysicsPanelsInner(
         const isOnion = panel.shape === 'onion';
         const isPencil = panel.shape === 'pencil';
         const isBanner = panel.shape === 'banner';
-        const dragIcon = (
-          <div
-            className={`floating-panel-drag-icon ${isPinned ? 'pinned' : ''}`}
-            onPointerDown={(e) => handleDragStart(e, panel.id)}
-            onContextMenu={(e) => handleTogglePin(e, panel.id)}
-            style={{ cursor: isPinned ? 'default' : 'grab' }}
-          />
-        );
+        const panelDragProps = {
+          onPointerDown: (e: React.PointerEvent) => handleDragStart(e, panel.id),
+          onPointerMove: handlePointerMove,
+          onPointerUp: handlePointerUp,
+          onContextMenu: (e: React.MouseEvent) => handleTogglePin(e, panel.id),
+          style: { cursor: isPinned ? 'default' : 'grab' } as React.CSSProperties,
+        };
 
         if (isPill) {
           return (
@@ -603,7 +678,9 @@ function PhysicsPanelsInner(
               key={panel.id}
               ref={(el) => { panelRefs.current.set(panel.id, el); }}
               className="floating-panel pill-panel"
+              {...panelDragProps}
               style={{
+                ...panelDragProps.style,
                 width: panel.width,
                 height: panel.height,
                 backgroundColor: panel.color,
@@ -613,7 +690,6 @@ function PhysicsPanelsInner(
               }}
             >
               <div className="pill-header">
-                {dragIcon}
                 <span className="pill-title">{panel.title}</span>
               </div>
               <div className="pill-body">{panel.children}</div>
@@ -629,7 +705,9 @@ function PhysicsPanelsInner(
               key={panel.id}
               ref={(el) => { panelRefs.current.set(panel.id, el); }}
               className="floating-panel canvas-panel"
+              {...panelDragProps}
               style={{
+                ...panelDragProps.style,
                 width: w,
                 height: h,
                 transformOrigin: 'center center',
@@ -646,7 +724,6 @@ function PhysicsPanelsInner(
               >
                 <path d={CANVAS_SVG_PATH} fill={panel.color} />
               </svg>
-              <div className="canvas-panel-drag">{dragIcon}</div>
               <div className="canvas-panel-label">CANVAS</div>
               <div className="canvas-panel-body">{panel.children}</div>
             </div>
@@ -661,7 +738,9 @@ function PhysicsPanelsInner(
               key={panel.id}
               ref={(el) => { panelRefs.current.set(panel.id, el); }}
               className="floating-panel onion-panel"
+              {...panelDragProps}
               style={{
+                ...panelDragProps.style,
                 width: w,
                 height: h,
                 transformOrigin: 'center center',
@@ -679,7 +758,6 @@ function PhysicsPanelsInner(
                 <path d={ONION_SVG_PATH_V2} fill={panel.color} />
               </svg>
               <div className="onion-header">
-                {dragIcon}
                 <span className="onion-title">{panel.title}</span>
               </div>
               <div className="onion-body">{panel.children}</div>
@@ -695,7 +773,9 @@ function PhysicsPanelsInner(
               key={panel.id}
               ref={(el) => { panelRefs.current.set(panel.id, el); }}
               className="floating-panel banner-panel"
+              {...panelDragProps}
               style={{
+                ...panelDragProps.style,
                 width: w,
                 height: h,
                 transformOrigin: 'center center',
@@ -706,7 +786,7 @@ function PhysicsPanelsInner(
               <svg
                 width={w}
                 height={h}
-                viewBox="0 0 222 353"
+                viewBox="0 0 222 270"
                 preserveAspectRatio="none"
                 style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
               >
@@ -714,7 +794,6 @@ function PhysicsPanelsInner(
               </svg>
               <div className="banner-header">
                 <span className="banner-title">{panel.title}</span>
-                {dragIcon}
               </div>
               <div className="banner-body">{panel.children}</div>
             </div>
@@ -729,7 +808,9 @@ function PhysicsPanelsInner(
               key={panel.id}
               ref={(el) => { panelRefs.current.set(panel.id, el); }}
               className="floating-panel pencil-panel"
+              {...panelDragProps}
               style={{
+                ...panelDragProps.style,
                 width: w,
                 height: h,
                 transformOrigin: 'center center',
@@ -746,7 +827,6 @@ function PhysicsPanelsInner(
               >
                 <path d={PENCIL_SVG_PATH} fill={panel.color} />
               </svg>
-              <div className="pencil-drag">{dragIcon}</div>
               <div className="pencil-title">{panel.title}</div>
               <div className="pencil-body">{panel.children}</div>
             </div>
@@ -761,7 +841,9 @@ function PhysicsPanelsInner(
               key={panel.id}
               ref={(el) => { panelRefs.current.set(panel.id, el); }}
               className="floating-panel snowman-panel"
+              {...panelDragProps}
               style={{
+                ...panelDragProps.style,
                 width: w,
                 height: h,
                 transformOrigin: 'center center',
@@ -779,7 +861,6 @@ function PhysicsPanelsInner(
                 <path d={SNOWMAN_SVG_PATH} fill={panel.color} />
               </svg>
               <div className="snowman-head">
-                <div className="snowman-drag">{dragIcon}</div>
                 <div className="snowman-title">{panel.title}</div>
               </div>
               <div className="snowman-body">{panel.children}</div>
@@ -795,7 +876,9 @@ function PhysicsPanelsInner(
               key={panel.id}
               ref={(el) => { panelRefs.current.set(panel.id, el); }}
               className="floating-panel dumbbell-panel"
+              {...panelDragProps}
               style={{
+                ...panelDragProps.style,
                 width: w,
                 height: h,
                 transformOrigin: 'center center',
@@ -814,7 +897,6 @@ function PhysicsPanelsInner(
               </svg>
               <div className="dumbbell-header">
                 <span className="dumbbell-title">{panel.title}</span>
-                {dragIcon}
               </div>
               <div className="dumbbell-body">{panel.children}</div>
             </div>
@@ -829,7 +911,9 @@ function PhysicsPanelsInner(
               key={panel.id}
               ref={(el) => { panelRefs.current.set(panel.id, el); }}
               className="floating-panel ticket-panel"
+              {...panelDragProps}
               style={{
+                ...panelDragProps.style,
                 width: w,
                 height: h,
                 transformOrigin: 'center center',
@@ -848,7 +932,6 @@ function PhysicsPanelsInner(
               </svg>
               <div className="floating-panel-header ticket-header">
                 <span className="floating-panel-title">{panel.title}</span>
-                {dragIcon}
               </div>
               <div className="ticket-body">{panel.children}</div>
             </div>
@@ -863,7 +946,9 @@ function PhysicsPanelsInner(
               key={panel.id}
               ref={(el) => { panelRefs.current.set(panel.id, el); }}
               className="floating-panel pen-panel"
+              {...panelDragProps}
               style={{
+                ...panelDragProps.style,
                 width: w,
                 height: h,
                 transformOrigin: 'center center',
@@ -878,7 +963,6 @@ function PhysicsPanelsInner(
               >
                 <path d={buildPenPath(w, h)} fill={panel.color} />
               </svg>
-              <div className="pen-tip-icon">{dragIcon}</div>
               <div className="pen-title">{panel.title}</div>
               <div className="pen-body">{panel.children}</div>
             </div>
@@ -890,7 +974,9 @@ function PhysicsPanelsInner(
             key={panel.id}
             ref={(el) => { panelRefs.current.set(panel.id, el); }}
             className="floating-panel"
+            {...panelDragProps}
             style={{
+              ...panelDragProps.style,
               width: panel.width,
               backgroundColor: panel.color,
               transformOrigin: 'center center',
@@ -899,7 +985,6 @@ function PhysicsPanelsInner(
           >
             <div className="floating-panel-header">
               <span className="floating-panel-title">{panel.title}</span>
-              {dragIcon}
             </div>
             <div className="floating-panel-body">{panel.children}</div>
           </div>

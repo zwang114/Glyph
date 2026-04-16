@@ -52,6 +52,24 @@ export function drawShape(
       ctx.fill();
       break;
     }
+    case 'star': {
+      // 5-pointed star
+      const spikes = 5;
+      const outerR = half;
+      const innerR = half * 0.4;
+      ctx.beginPath();
+      for (let i = 0; i < spikes * 2; i++) {
+        const r = i % 2 === 0 ? outerR : innerR;
+        const angle = (Math.PI / 2) * -1 + (Math.PI / spikes) * i;
+        const px = cx + Math.cos(angle) * r;
+        const py = cy + Math.sin(angle) * r;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
     case 'metaball':
       // Metaballs are drawn as a batch in drawMetaballs(), not per-pixel
       break;
@@ -203,6 +221,21 @@ export function shapeToPathCommands(
         { cmd: 'L', args: [cx - h * 0.6, cy - half * 0.8] },
         { cmd: 'Z', args: [] },
       ];
+    }
+    case 'star': {
+      const spikes = 5;
+      const outerR = half;
+      const innerR = half * 0.4;
+      const cmds: { cmd: 'M' | 'L' | 'Z'; args: number[] }[] = [];
+      for (let i = 0; i < spikes * 2; i++) {
+        const r = i % 2 === 0 ? outerR : innerR;
+        const angle = (Math.PI / 2) * -1 + (Math.PI / spikes) * i;
+        const px = cx + Math.cos(angle) * r;
+        const py = cy - Math.sin(angle) * r; // flip Y for font coords
+        cmds.push({ cmd: i === 0 ? 'M' : 'L', args: [px, py] });
+      }
+      cmds.push({ cmd: 'Z', args: [] });
+      return cmds;
     }
     case 'metaball': {
       // For metaball export, we use marching squares on the scalar field

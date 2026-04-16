@@ -100,8 +100,9 @@ export function VerticalLever<T extends string>({
         <div
           className={`lever-thumb ${dragging ? 'lever-thumb--dragging' : ''}`}
           style={{
-            width: trackWidth - 8,
+            width: trackWidth - 16,
             height: thumbHeight,
+            left: 8,
             top: thumbY - thumbHeight / 2,
             transition: dragging ? 'none' : 'top 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
           }}

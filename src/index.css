@@ -254,7 +254,7 @@ body {
 
 .lever-track {
   position: relative;
-  background: rgba(0, 0, 0, 0.25);
+  background: rgba(255, 255, 255, 0.35);
   border-radius: 9999px;
   cursor: pointer;
   flex-shrink: 0;
@@ -265,12 +265,12 @@ body {
   left: 4px;
   background: #fff;
   border-radius: 9999px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 2px 6px rgba(255, 255, 255, 0.35);
   pointer-events: none;
 }
 
 .lever-thumb--dragging {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.5);
 }
 
 .lever-labels {
@@ -301,240 +301,366 @@ body {
   font-weight: 700;
 }
 
-/* Onion Skin panel (bulb shape) */
+/* Banner panel (Brush tool — rect top, pointed bottom) */
+.banner-panel {
+  background: transparent !important;
+  border-radius: 0 !important;
+  overflow: visible;
+  font-family: 'Noto Sans', sans-serif;
+}
+
+.banner-header {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 2;
+}
+
+.banner-title {
+  font-family: 'Noto Sans', sans-serif;
+  font-weight: 300;
+  font-size: 16px;
+  letter-spacing: 1.2px;
+  color: #000;
+  text-transform: uppercase;
+}
+
+.banner-body {
+  position: absolute;
+  top: 48px;
+  left: 16px;
+  right: 16px;
+  bottom: 73px; /* leave room for the pointed tip */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2;
+}
+
+/* Lever overrides inside banner panel — black-on-orange Figma design */
+.banner-panel .lever {
+  gap: 16px;
+  width: 100%;
+}
+
+.banner-panel .lever-track {
+  background: #000;
+  border-radius: 8px;
+}
+
+.banner-panel .lever-thumb {
+  background: #FF6200;
+  border-radius: 8px;
+  box-shadow: none;
+  left: 8px;
+  right: 8px;
+  width: auto;
+}
+
+.banner-panel .lever-thumb--dragging {
+  box-shadow: none;
+}
+
+.banner-panel .lever-labels {
+  flex: 1;
+}
+
+.banner-panel .lever-label {
+  font-family: 'Noto Sans', sans-serif;
+  font-weight: 400;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: #000;
+  text-transform: uppercase;
+}
+
+.banner-panel .lever-label--hover {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.banner-panel .lever-label--active {
+  color: #000;
+  font-weight: 600;
+}
+
+/* Banner drag handle — black square instead of circle */
+.banner-panel .floating-panel-drag-icon {
+  background: #000;
+  border-radius: 4px;
+  width: 20px;
+  height: 20px;
+}
+
+.banner-panel .floating-panel-drag-icon.pinned {
+  background: #fff;
+}
+
+/* Onion Skin panel (unified stem + bulb + bottom connector) */
 .onion-panel {
   background: transparent !important;
   border-radius: 0 !important;
   overflow: visible;
+  font-family: 'Noto Sans', sans-serif;
 }
 
-.onion-stem {
+/* Header: drag handle + title stacked vertically, centered in bulb top */
+.onion-header {
   position: absolute;
-  top: 4px;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 44px; /* below the stem (28px) + padding */
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
   z-index: 2;
+  pointer-events: none;
+}
+
+.onion-header > * {
+  pointer-events: auto;
+}
+
+.onion-panel .floating-panel-drag-icon {
+  background: #000;
+  border-radius: 4px;
+  width: 20px;
+  height: 20px;
+  border: none;
+}
+
+.onion-panel .floating-panel-drag-icon.pinned {
+  background: #fff;
 }
 
 .onion-title {
-  position: absolute;
-  top: 48px;
-  left: 0;
-  right: 0;
-  text-align: center;
-  font-family: var(--font-ui);
-  font-weight: var(--weight-light);
-  font-size: 18px;
-  color: rgba(0, 0, 0, 0.75);
-  z-index: 2;
+  font-family: 'Noto Sans', sans-serif;
+  font-weight: 300;
+  font-size: 16px;
+  letter-spacing: 1.2px;
+  color: #000;
 }
 
 .onion-body {
   position: absolute;
-  top: 90px;
-  left: 60px;
-  right: 60px;
-  bottom: 24px;
+  top: 128px; /* below header */
+  left: 48px;
+  right: 48px;
+  bottom: 50px; /* above bottom connector */
   z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
-}
-
-.onion-controls {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-}
-
-/* Onion toggle — reuse mirror-toggle styles but with dark text on yellow */
-.onion-panel .mirror-toggle {
-  background: rgba(0, 0, 0, 0.15);
-}
-
-.onion-panel .mirror-toggle-thumb {
-  background: rgba(0, 0, 0, 0.85);
-}
-
-.onion-panel .mirror-toggle-label {
-  color: rgba(0, 0, 0, 0.85);
-}
-
-.onion-panel .mirror-toggle:not(.mirror-toggle--on) .mirror-toggle-label.off {
-  color: #fff;
-}
-.onion-panel .mirror-toggle:not(.mirror-toggle--on) .mirror-toggle-label.on {
-  color: rgba(0, 0, 0, 0.5);
-}
-.onion-panel .mirror-toggle--on .mirror-toggle-label.on {
-  color: #fff;
-}
-.onion-panel .mirror-toggle--on .mirror-toggle-label.off {
-  color: rgba(0, 0, 0, 0.5);
-}
-
-.onion-extras {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  opacity: 0;
-  max-height: 0;
-  overflow: hidden;
-  transform: translateY(-8px);
-  transition: opacity 0.25s ease-out, max-height 0.3s ease-out, transform 0.25s ease-out;
   pointer-events: none;
 }
 
-.onion-controls--on .onion-extras {
-  opacity: 1;
-  max-height: 200px;
-  transform: translateY(0);
+.onion-body > * {
   pointer-events: auto;
 }
 
-.onion-font-row {
+/* New onion controls layout */
+.onion-controls-v2 {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 3-way toggle row: OFF / SERIF / SANS */
+.onion-toggle-row {
   display: flex;
   gap: 8px;
   width: 100%;
 }
 
-.onion-font-row .mirror-mode-btn {
+.onion-toggle-btn {
   flex: 1;
-}
-
-.onion-size-row {
+  height: 40px;
+  border: 1px solid #000;
+  border-radius: 1000px;
+  background: #FFF18B;
+  color: #000;
+  font-family: 'Noto Sans', sans-serif;
+  font-weight: 400;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  cursor: pointer;
   display: flex;
   align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  padding: 0;
+}
+
+.onion-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.onion-toggle-btn--active {
+  background: #000;
+  color: #FFF18B;
+  border-color: #000;
+}
+
+/* Size section */
+.onion-size-section {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
   width: 100%;
-  padding-top: 4px;
+}
+
+.onion-size-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
 }
 
 .onion-size-label {
-  font-family: var(--font-ui);
-  font-weight: var(--weight-light);
-  font-size: 11px;
-  color: rgba(0, 0, 0, 0.7);
+  font-family: 'Noto Sans', sans-serif;
+  font-weight: 400;
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  color: #000;
 }
 
 .onion-size-value {
-  font-family: var(--font-mono);
-  font-weight: var(--weight-light);
+  font-family: 'Noto Sans', sans-serif;
+  font-weight: 400;
   font-size: 10px;
-  color: rgba(0, 0, 0, 0.7);
-  width: 34px;
-  text-align: right;
+  color: #000;
 }
 
-.onion-slider {
-  -webkit-appearance: none;
-  appearance: none;
-  flex: 1;
-  height: 2px;
-  background: rgba(0, 0, 0, 0.3);
-  outline: none;
-  cursor: pointer;
+/* Density slider inside onion — yellow thumb on black track */
+.onion-controls-v2 .density-slider {
+  background: #000;
+  border-radius: 8px;
+  padding: 8px;
+  width: 100%;
 }
 
-.onion-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 12px;
-  height: 12px;
-  background: rgba(0, 0, 0, 0.85);
-  border-radius: 50%;
-  cursor: pointer;
+.onion-controls-v2 .density-slider-thumb {
+  background: #FFF18B;
 }
 
-.onion-slider::-moz-range-thumb {
-  width: 12px;
-  height: 12px;
-  background: rgba(0, 0, 0, 0.85);
-  border: none;
-  border-radius: 50%;
-  cursor: pointer;
-}
-
-/* Canvas Size panel (notched 3-section pink bar) */
+/* Canvas Size panel (notched 3-section pink bar — horizontal layout) */
 .canvas-panel {
   background: transparent !important;
   border-radius: 0 !important;
   overflow: visible;
+  font-family: 'Noto Sans', sans-serif;
 }
 
+/* Drag handle — positioned in the left section (0–103px, center at ~51px) */
 .canvas-panel-drag {
   position: absolute;
-  top: 8px;
-  left: 50%;
+  top: 24px;
+  left: 51px;
   transform: translateX(-50%);
-  z-index: 2;
+  z-index: 3;
 }
 
+.canvas-panel .floating-panel-drag-icon {
+  background: #000;
+  border-radius: 4px;
+  width: 20px;
+  height: 20px;
+  border: none;
+}
+
+.canvas-panel .floating-panel-drag-icon.pinned {
+  background: #fff;
+}
+
+/* CANVAS title in the left section */
+.canvas-panel-label {
+  position: absolute;
+  top: 56px;
+  left: 51px;
+  transform: translateX(-50%);
+  font-family: 'Noto Sans', sans-serif;
+  font-weight: 300;
+  font-size: 16px;
+  letter-spacing: 1.2px;
+  color: #000;
+  text-transform: uppercase;
+  z-index: 2;
+  white-space: nowrap;
+}
+
+/* Body holds the two input groups — positioned in sections 2 and 3 */
 .canvas-panel-body {
   position: absolute;
-  inset: 0;
+  /* Sections 2 and 3 start after the first notch bridge (x=103 → x=119) */
+  left: 119px;
+  top: 0;
+  right: 0;
+  bottom: 0;
   z-index: 2;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0;
+  align-items: stretch;
 }
 
-.canvas-size-section {
+/* Each W/H dimension group fills one section */
+.canvas-dim-group {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+}
+
+.canvas-dim-label {
+  font-family: 'Noto Sans', sans-serif;
+  font-weight: 400;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  color: #000;
+}
+
+.canvas-input-box {
+  background: #000;
+  border-radius: 8px;
+  padding: 8px;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
 }
 
-.canvas-size-label {
-  font-family: var(--font-ui);
-  font-weight: var(--weight-light);
-  font-size: 14px;
-  color: var(--color-bg);
-  opacity: 0.7;
-  letter-spacing: 0.5px;
-}
-
-.canvas-size-input {
-  width: 60px;
-  height: 32px;
+.canvas-input {
+  width: 100%;
   background: transparent;
-  color: var(--color-bg);
-  border: 1px solid rgba(0, 0, 0, 0.3);
-  border-radius: 16px;
-  font-family: var(--font-mono);
-  font-weight: var(--weight-light);
-  font-size: 14px;
+  color: #FF92BE;
+  border: none;
+  font-family: 'Noto Sans', sans-serif;
+  font-weight: 400;
+  font-size: 10px;
+  letter-spacing: 0.5px;
   text-align: center;
   outline: none;
   -moz-appearance: textfield;
 }
 
-.canvas-size-input::-webkit-inner-spin-button,
-.canvas-size-input::-webkit-outer-spin-button {
+.canvas-input::-webkit-inner-spin-button,
+.canvas-input::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
 
-.canvas-size-input:focus {
-  border-color: rgba(0, 0, 0, 0.7);
-  background: rgba(255, 255, 255, 0.2);
-}
-
-.canvas-size-x {
-  flex: 0 0 auto;
-  font-family: var(--font-ui);
-  font-weight: var(--weight-light);
-  font-size: 18px;
-  color: var(--color-bg);
-  opacity: 0.5;
-  padding: 0 4px;
+.canvas-dim-unit {
+  font-family: 'Noto Sans', sans-serif;
+  font-weight: 400;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  color: #000;
 }
 
 /* Pill panel (rounded stadium, variable height) */
@@ -548,11 +674,11 @@ body {
   top: 0;
   left: 0;
   right: 0;
-  padding-top: 18px;
+  padding-top: 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 18px;
+  gap: 16px;
   z-index: 2;
   pointer-events: none;
 }
@@ -561,23 +687,40 @@ body {
   pointer-events: auto;
 }
 
+.pill-panel .floating-panel-drag-icon {
+  background: #000;
+  border-radius: 4px;
+  width: 20px;
+  height: 20px;
+  border: none;
+}
+
+.pill-panel .floating-panel-drag-icon.pinned {
+  background: #fff;
+}
+
 .pill-title {
   font-family: var(--font-ui);
   font-weight: var(--weight-light);
-  font-size: 18px;
-  color: rgba(255, 255, 255, 0.9);
-  letter-spacing: 0.3px;
+  font-size: 16px;
+  color: var(--color-bg);
+  letter-spacing: 1.2px;
 }
 
 .pill-body {
   position: absolute;
-  top: 88px;
-  left: 32px;
-  right: 32px;
-  bottom: 16px;
+  top: 84px;
+  left: 16px;
+  right: 16px;
+  bottom: 40px;
   z-index: 2;
   display: flex;
   justify-content: center;
+  pointer-events: none;
+}
+
+.pill-body > * {
+  pointer-events: auto;
 }
 
 /* Snowman panel (figure-8 shape) */
@@ -646,7 +789,7 @@ body {
   position: relative;
   width: 100%;
   height: 28px;
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(255, 255, 255, 0.3);
   border-radius: 14px;
   cursor: pointer;
   display: flex;
@@ -742,7 +885,7 @@ body {
   padding: 7px 12px;
   background: transparent;
   color: var(--color-bg);
-  border: 1px solid rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.35);
   border-radius: 14px;
   font-family: var(--font-ui);
   font-weight: var(--weight-light);
@@ -758,7 +901,7 @@ body {
 }
 
 .mirror-mode-btn:hover {
-  background: rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .mirror-mode-btn--active {
@@ -812,6 +955,227 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* Dumbbell panel (two-section shape control) */
+.dumbbell-panel {
+  background: transparent !important;
+  border-radius: 0 !important;
+  overflow: visible;
+}
+
+.dumbbell-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 16px 16px 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 2;
+}
+
+.dumbbell-title {
+  font-family: var(--font-ui);
+  font-weight: var(--weight-light);
+  font-size: 16px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--color-bg);
+}
+
+.dumbbell-body {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.dumbbell-body > * {
+  pointer-events: auto;
+}
+
+.dumbbell-top {
+  position: absolute;
+  top: 40px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  justify-content: center;
+}
+
+.dumbbell-bottom {
+  position: absolute;
+  top: 296px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+
+/* Dumbbell drag handle — 20x20 black rounded square (matching Figma DragHandle) */
+.dumbbell-panel .floating-panel-drag-icon {
+  background: #000;
+  border-radius: 4px;
+  width: 20px;
+  height: 20px;
+  border: none;
+}
+
+.dumbbell-panel .floating-panel-drag-icon.pinned {
+  background: #fff;
+}
+
+/* Custom density slider (Figma spec: black container, olive thumb) */
+.density-slider {
+  background: var(--color-bg);
+  border-radius: 8px;
+  padding: 8px;
+  width: 100%;
+  position: relative;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+}
+
+.density-slider-track {
+  position: relative;
+  height: 16px;
+  width: 100%;
+}
+
+.density-slider-thumb {
+  position: absolute;
+  width: 8px;
+  height: 16px;
+  background: #879900;
+  border-radius: 8px;
+  top: 0;
+  pointer-events: none;
+}
+
+/* Mirror Selector (radial dial with 4 options) */
+.mirror-selector {
+  position: relative;
+  user-select: none;
+  touch-action: none;
+}
+
+.mirror-selector-circle {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.3;
+}
+
+.mirror-sel-btn {
+  position: absolute;
+  font-family: var(--font-ui);
+  font-weight: normal;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  border: 1px solid var(--color-bg);
+  border-radius: 50%;
+  cursor: pointer;
+  background: #aeaeae;
+  color: var(--color-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  z-index: 2;
+  padding: 0;
+}
+
+.mirror-sel-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.mirror-sel-btn--active {
+  background: var(--color-bg);
+  color: #aeaeae;
+  border-color: var(--color-bg);
+}
+
+.mirror-sel-btn--hover:not(.mirror-sel-btn--active) {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Radial Shape Selector */
+.radial-selector {
+  position: relative;
+  user-select: none;
+  touch-action: none;
+}
+
+.radial-lines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.6;
+  z-index: 0;
+}
+
+.radial-btn {
+  position: absolute;
+  z-index: 1;
+  font-family: var(--font-ui);
+  font-weight: normal;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  border: 1px solid var(--color-bg);
+  border-radius: 50%;
+  cursor: pointer;
+  background: var(--dial-color, transparent);
+  color: var(--color-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  z-index: 2;
+  padding: 0;
+}
+
+.radial-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.radial-btn--active {
+  background: var(--color-bg);
+  color: var(--active-color, #879900);
+  border-color: var(--color-bg);
+}
+
+.radial-btn--hover:not(.radial-btn--active) {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.radial-dial {
+  position: absolute;
+  background: var(--color-bg);
+  border-radius: 50%;
+  cursor: grab;
+  z-index: 1;
+}
+
+.radial-dial--dragging {
+  cursor: grabbing;
+}
+
+.radial-dial-indicator {
+  width: 2px;
+  height: 20px;
+  background: var(--dial-color, #879900);
+  border-radius: 1px;
+  position: absolute;
+  top: 10px;
+  left: calc(50% - 1px);
+  transform-origin: center calc(100% + 10px);
 }
 
 .pen-tip-icon {
@@ -875,7 +1239,7 @@ body {
   letter-spacing: 0.5px;
   text-transform: uppercase;
   padding: 7px 12px;
-  border: 1px solid rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 14px;
   cursor: pointer;
   background: transparent;
@@ -884,7 +1248,7 @@ body {
 }
 
 .fp-btn:hover {
-  background: rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .fp-btn--active {
@@ -942,7 +1306,7 @@ body {
   appearance: none;
   flex: 1;
   height: 2px;
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(255, 255, 255, 0.3);
   outline: none;
   cursor: pointer;
   border-radius: 1px;
@@ -1556,4 +1920,110 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.3);
+}
+
+/* ============================================
+   Tool Drawer
+   ============================================ */
+
+.tool-drawer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 20;
+  background: var(--color-bg);
+  border-right: var(--border-strong);
+  overflow: visible;
+  pointer-events: auto;
+}
+
+.tool-drawer-content {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--color-bg);
+}
+
+.tool-drawer-empty {
+  width: 100%;
+  height: 100%;
+}
+
+/* Drawer handle — vertical tab protruding from right edge */
+.tool-drawer-handle {
+  position: absolute;
+  right: -32px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 100px;
+  background: var(--color-bg);
+  border: var(--border-strong);
+  border-left: none;
+  border-radius: 0 8px 8px 0;
+  cursor: grab;
+  z-index: 21;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  user-select: none;
+  touch-action: none;
+}
+
+.tool-drawer-handle:active {
+  cursor: grabbing;
+}
+
+.tool-drawer-handle-grip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  pointer-events: none;
+}
+
+.tool-drawer-handle-grip span {
+  display: block;
+  width: 14px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+/* Panels inside the drawer — physics-driven positioning */
+.drawer-panel {
+  position: absolute;
+  user-select: none;
+}
+
+.drawer-panel--dragging {
+  opacity: 0.3;
+}
+
+.drawer-panel-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* Invisible drag overlay covering the whole panel in drawer */
+.drawer-panel-drag-handle {
+  position: absolute;
+  inset: 0;
+  cursor: grab;
+  z-index: 10;
+}
+
+.drawer-panel-drag-handle:active {
+  cursor: grabbing;
+}
+
+/* Ghost panel while dragging out of drawer */
+.tool-drawer-ghost {
+  position: fixed;
+  z-index: 100;
+  pointer-events: none;
+  opacity: 0.85;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.5));
 }

@@ -1,11 +1,18 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { PixelCanvas } from '../../canvas/PixelCanvas';
 import { useEditorStore } from '../../stores/editorStore';
 import { useFontStore } from '../../stores/fontStore';
+import { useDrawerStore } from '../../stores/drawerStore';
 import { BASIC_LATIN } from '../../utils/charset';
 import { PhysicsPanels } from '../shared/PhysicsPanels';
+import type { PhysicsPanelsHandle, PanelDef } from '../shared/PhysicsPanels';
+import { ToolDrawer } from '../shared/ToolDrawer';
 import { VerticalLever } from '../shared/VerticalLever';
+import { RadialBrushSelector } from '../shared/RadialBrushSelector';
+import { RadialShapeSelector } from '../shared/RadialShapeSelector';
+import { DensitySlider } from '../shared/DensitySlider';
+import { RadialMirrorSelector } from '../shared/RadialMirrorSelector';
 import type { EditorTool, PixelShape } from '../../types/editor';
 
 export function GlyphEditorView() {
@@ -27,6 +34,7 @@ export function GlyphEditorView() {
   const setPixelShape = useEditorStore((s) => s.setPixelShape);
   const setPixelDensity = useEditorStore((s) => s.setPixelDensity);
   const setOnionSkinEnabled = useEditorStore((s) => s.setOnionSkinEnabled);
+  const setOnionSkinFont = useEditorStore((s) => s.setOnionSkinFont);
   const toggleOnionSkinFont = useEditorStore((s) => s.toggleOnionSkinFont);
   const setOnionSkinSize = useEditorStore((s) => s.setOnionSkinSize);
   const glyph = useFontStore((s) =>
@@ -96,153 +104,191 @@ export function GlyphEditorView() {
     }
   };
 
-  const tools: { key: EditorTool; label: string }[] = [
-    { key: 'pixel', label: 'PIXEL' },
-    { key: 'line', label: 'LINE' },
-    { key: 'rect', label: 'RECTANGLE' },
-    { key: 'fill', label: 'FILL' },
-  ];
-  const shapes: { key: PixelShape; label: string }[] = [
-    { key: 'square', label: 'SQ' }, { key: 'circle', label: 'CI' },
-    { key: 'diamond', label: 'DM' }, { key: 'triangle', label: 'TR' },
-    { key: 'metaball', label: 'MB' },
-  ];
-
   const panelDefs = [
     {
-      id: 'tools', width: 222, height: 353, color: '#FF6200', title: 'BRUSH', shape: 'pencil' as const,
+      id: 'tools', width: 222, height: 270, color: '#FF6200', title: 'BRUSH', shape: 'banner' as const,
       children: (
-        <VerticalLever<EditorTool>
-          options={tools.map(t => ({ key: t.key, label: t.label }))}
+        <RadialBrushSelector
           value={activeTool === 'eraser' ? 'pixel' : activeTool}
           onChange={setTool}
-          trackHeight={180}
-          trackWidth={20}
         />
       ),
     },
     {
-      id: 'shape', width: 222, height: 175, color: '#879900', title: 'SHAPE', shape: 'ticket' as const,
+      id: 'shape', width: 222, height: 368, color: '#879900', title: 'SHAPE', shape: 'dumbbell' as const,
       children: (
         <>
-          <div className="ticket-top">
-            <div className="fp-shapes">
-              {shapes.map((s) => (
-                <button key={s.key} className={`fp-btn ${pixelShape === s.key ? 'fp-btn--active' : ''}`}
-                  onClick={() => setPixelShape(s.key)}>{s.label}</button>
-              ))}
-            </div>
+          <div className="dumbbell-top">
+            <RadialShapeSelector value={pixelShape} onChange={setPixelShape} />
           </div>
-          <div className="ticket-bottom">
+          <div className="dumbbell-bottom">
             <div className="fp-density-row">
-              <span className="fp-density-label">DENSITY</span>
+              <span className="fp-density-label">PATTERN DENSITY</span>
               <span className="fp-density-value">{Math.round(pixelDensity * 100)}%</span>
             </div>
-            <input type="range" min="15" max="100" value={Math.round(pixelDensity * 100)}
-              onChange={(e) => setPixelDensity(Number(e.target.value) / 100)} className="fp-slider" />
+            <DensitySlider
+              value={pixelDensity}
+              min={0.15}
+              max={1}
+              onChange={setPixelDensity}
+            />
           </div>
         </>
       ),
     },
     {
-      id: 'mirror', width: 221, height: mirrorMode === 'none' ? 191 : 279, color: '#610099', title: 'Mirror', shape: 'pill' as const,
+      id: 'mirror', width: 222, height: 318, color: '#aeaeae', title: 'Mirror', shape: 'pill' as const,
       children: (
-        <div className={`mirror-controls ${mirrorMode !== 'none' ? 'mirror-controls--on' : ''}`}>
-          <div className={`mirror-toggle ${mirrorMode !== 'none' ? 'mirror-toggle--on' : ''}`}
-            onClick={() => setMirrorMode(mirrorMode === 'none' ? 'horizontal' : 'none')}>
-            <div className="mirror-toggle-thumb" />
-            <span className="mirror-toggle-label on">ON</span>
-            <span className="mirror-toggle-label off">OFF</span>
-          </div>
-          <div className="mirror-modes">
-            <div className="mirror-modes-row">
-              <button className={`mirror-mode-btn ${mirrorMode === 'horizontal' ? 'mirror-mode-btn--active' : ''}`}
-                onClick={() => setMirrorMode('horizontal')}>H</button>
-              <button className={`mirror-mode-btn ${mirrorMode === 'vertical' ? 'mirror-mode-btn--active' : ''}`}
-                onClick={() => setMirrorMode('vertical')}>V</button>
-            </div>
-            <button className={`mirror-mode-btn mirror-mode-btn--full ${mirrorMode === 'both' ? 'mirror-mode-btn--active' : ''}`}
-              onClick={() => setMirrorMode('both')}>H+V</button>
-          </div>
-        </div>
+        <RadialMirrorSelector value={mirrorMode} onChange={setMirrorMode} />
       ),
     },
     {
-      id: 'canvas', width: 341, height: 103, color: '#FF92BE', title: 'Canvas Size', shape: 'canvas' as const,
+      id: 'canvas', width: 341, height: 103, color: '#FF92BE', title: 'CANVAS', shape: 'canvas' as const,
       children: (
         <>
-          <div className="canvas-size-section">
-            <span className="canvas-size-label">W</span>
-            <input
-              type="number"
-              className="canvas-size-input"
-              value={wInput}
-              min={4}
-              max={128}
-              onChange={(e) => setWInput(Number(e.target.value))}
-              onBlur={applyCanvasSize}
-              onKeyDown={(e) => { if (e.key === 'Enter') applyCanvasSize(); }}
-            />
+          <div className="canvas-dim-group">
+            <span className="canvas-dim-label">W</span>
+            <div className="canvas-input-box">
+              <input
+                type="number"
+                className="canvas-input"
+                value={wInput}
+                min={4}
+                max={128}
+                onChange={(e) => setWInput(Number(e.target.value))}
+                onBlur={applyCanvasSize}
+                onKeyDown={(e) => { if (e.key === 'Enter') applyCanvasSize(); }}
+              />
+            </div>
+            <span className="canvas-dim-unit">PX</span>
           </div>
-          <div className="canvas-size-section canvas-size-x">×</div>
-          <div className="canvas-size-section">
-            <span className="canvas-size-label">H</span>
-            <input
-              type="number"
-              className="canvas-size-input"
-              value={hInput}
-              min={4}
-              max={128}
-              onChange={(e) => setHInput(Number(e.target.value))}
-              onBlur={applyCanvasSize}
-              onKeyDown={(e) => { if (e.key === 'Enter') applyCanvasSize(); }}
-            />
+          <div className="canvas-dim-group">
+            <span className="canvas-dim-label">H</span>
+            <div className="canvas-input-box">
+              <input
+                type="number"
+                className="canvas-input"
+                value={hInput}
+                min={4}
+                max={128}
+                onChange={(e) => setHInput(Number(e.target.value))}
+                onBlur={applyCanvasSize}
+                onKeyDown={(e) => { if (e.key === 'Enter') applyCanvasSize(); }}
+              />
+            </div>
+            <span className="canvas-dim-unit">PX</span>
           </div>
         </>
       ),
     },
     {
       id: 'onion',
-      width: 341,
-      height: onionSkinEnabled ? 319 : 180,
+      width: 320,
+      height: 305,
       color: '#FFF18B',
       title: 'Onion Skin',
       shape: 'onion' as const,
       children: (
-        <div className={`onion-controls ${onionSkinEnabled ? 'onion-controls--on' : ''}`}>
-          <div className={`mirror-toggle ${onionSkinEnabled ? 'mirror-toggle--on' : ''}`}
-            onClick={() => setOnionSkinEnabled(!onionSkinEnabled)}>
-            <div className="mirror-toggle-thumb" />
-            <span className="mirror-toggle-label on">ON</span>
-            <span className="mirror-toggle-label off">OFF</span>
+        <div className="onion-controls-v2">
+          {/* 3-way toggle: OFF / SERIF / SANS */}
+          <div className="onion-toggle-row">
+            <button
+              className={`onion-toggle-btn ${!onionSkinEnabled ? 'onion-toggle-btn--active' : ''}`}
+              onClick={() => setOnionSkinEnabled(false)}
+            >OFF</button>
+            <button
+              className={`onion-toggle-btn ${onionSkinEnabled && onionSkinFont === 'serif' ? 'onion-toggle-btn--active' : ''}`}
+              onClick={() => { setOnionSkinEnabled(true); setOnionSkinFont('serif'); }}
+            >SERIF</button>
+            <button
+              className={`onion-toggle-btn ${onionSkinEnabled && onionSkinFont === 'sans-serif' ? 'onion-toggle-btn--active' : ''}`}
+              onClick={() => { setOnionSkinEnabled(true); setOnionSkinFont('sans-serif'); }}
+            >SANS</button>
           </div>
-          <div className="onion-extras">
-            <div className="onion-font-row">
-              <button className={`mirror-mode-btn ${onionSkinFont === 'serif' ? 'mirror-mode-btn--active' : ''}`}
-                onClick={toggleOnionSkinFont}>Serif</button>
-              <button className={`mirror-mode-btn ${onionSkinFont === 'sans-serif' ? 'mirror-mode-btn--active' : ''}`}
-                onClick={toggleOnionSkinFont}>Sans</button>
+          {/* Size slider */}
+          <div className="onion-size-section">
+            <div className="onion-size-header">
+              <span className="onion-size-label">SIZE</span>
+              <span className="onion-size-value">{Math.round(onionSkinSize * 100)}%</span>
             </div>
-            <div className="onion-size-row">
-              <span className="onion-size-label">Size</span>
-              <input type="range" min="30" max="200" value={Math.round(onionSkinSize * 100)}
-                onChange={(e) => setOnionSkinSize(Number(e.target.value) / 100)}
-                className="onion-slider" />
-              <span className="onion-size-value mono">{Math.round(onionSkinSize * 100)}%</span>
-            </div>
+            <DensitySlider
+              value={onionSkinSize}
+              min={0.3}
+              max={2}
+              onChange={setOnionSkinSize}
+            />
           </div>
         </div>
       ),
     },
   ];
 
+  // Drawer state
+  const physicsRef = useRef<PhysicsPanelsHandle>(null);
+  const storedPanelIds = useDrawerStore((s) => s.storedPanelIds);
+  const storePanel = useDrawerStore((s) => s.storePanel);
+  const restorePanel = useDrawerStore((s) => s.restorePanel);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const drawerWidth = Math.round(containerSize.w * (2 / 3));
+
+  // Split panels: active (on canvas) vs stored (in drawer)
+  const activePanels = useMemo(
+    () => panelDefs.filter((p) => !storedPanelIds.includes(p.id)),
+    [panelDefs, storedPanelIds]
+  );
+  const storedPanels = useMemo(
+    () => panelDefs.filter((p) => storedPanelIds.includes(p.id)),
+    [panelDefs, storedPanelIds]
+  );
+
+  // Track where panels were dropped into the drawer
+  const dropPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+
+  // When a panel is dropped inside the drawer from the canvas
+  const handlePanelDroppedInDrawer = useCallback((panelId: string, x: number, y: number) => {
+    // Store drop position so the drawer can place the body there
+    dropPositionsRef.current.set(panelId, { x, y });
+    storePanel(panelId);
+  }, [storePanel]);
+
+  // When a panel is dragged out of the drawer back to the canvas
+  const handlePanelDraggedOut = useCallback((panelId: string, x: number, y: number) => {
+    const panel = panelDefs.find((p) => p.id === panelId);
+    if (!panel) return;
+    restorePanel(panelId);
+    // rAF ensures React has re-rendered with the panel in activePanels
+    requestAnimationFrame(() => {
+      physicsRef.current?.addPanelBody(panel, x, y);
+    });
+  }, [panelDefs, restorePanel]);
+
+  const [drawerEdge, setDrawerEdge] = useState(0);
+
+  const handleDrawerOpenChange = useCallback((isOpen: boolean, rightEdge: number) => {
+    setDrawerOpen(isOpen);
+    setDrawerEdge(rightEdge);
+  }, []);
+
   return (
     <div className="editor-fullcanvas" ref={containerRef}>
       <PixelCanvas />
       <PhysicsPanels
-        panels={panelDefs}
+        ref={physicsRef}
+        panels={activePanels}
         containerWidth={containerSize.w}
         containerHeight={containerSize.h}
+        drawerOpen={drawerOpen}
+        drawerRightEdge={drawerEdge}
+        onPanelDroppedInDrawer={handlePanelDroppedInDrawer}
+      />
+      <ToolDrawer
+        panels={storedPanels}
+        containerWidth={containerSize.w}
+        containerHeight={containerSize.h}
+        onPanelDraggedOut={handlePanelDraggedOut}
+        onOpenChange={handleDrawerOpenChange}
+        dropPositions={dropPositionsRef.current}
       />
       <div className="floating-nav">
         <button className="fp-btn fp-btn--dark" onClick={handlePrev} disabled={currentIdx <= 0}>PREV</button>

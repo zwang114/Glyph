@@ -41,6 +41,10 @@ export function PreviewView() {
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (prevUrlRef.current) {
+        URL.revokeObjectURL(prevUrlRef.current);
+        prevUrlRef.current = null;
+      }
     };
   }, [project, glyphs, glyphCount, pixelShape, pixelDensity]);
 

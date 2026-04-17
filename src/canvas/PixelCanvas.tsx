@@ -5,10 +5,13 @@ import type { Glyph } from '../types/font';
 import type { MirrorMode } from '../types/editor';
 import { drawShape, drawMetaballs } from '../engine/shapes';
 
-const GRID_DOT_COLOR = 'rgba(0, 0, 0, 0.22)';
+// Dot color paired with 'difference' blend mode so dots remain visible
+// against any canvas fill color (prep for upcoming color-style tool).
+const GRID_DOT_COLOR = '#FFFFFF';
+const CANVAS_FILL_COLOR = '#E9D9CB';
 
 const PIXEL_COLOR = '#1a1a1a';
-const BG_COLOR = '#FFFBF6';
+const BG_COLOR = '#F9F1E9';
 const HOVER_COLOR = 'rgba(0, 0, 0, 0.08)';
 
 export function PixelCanvas() {
@@ -138,17 +141,43 @@ export function PixelCanvas() {
     const gridW = glyph.gridWidth * cellSize;
     const gridH = glyph.gridHeight * cellSize;
 
-    // --- Canvas border (dotted) ---
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([2, 4]);
-    ctx.strokeRect(
-      Math.round(origin.x) + 0.5,
-      Math.round(origin.y) + 0.5,
-      gridW,
-      gridH
-    );
-    ctx.setLineDash([]);
+    // --- Canvas fill ---
+    // Fill the canvas region with its own color. This is the surface that
+    // will be user-configurable by the upcoming color-style tool.
+    const canvasRectX = Math.round(origin.x);
+    const canvasRectY = Math.round(origin.y);
+    const canvasCornerRadius = 8;
+    ctx.fillStyle = CANVAS_FILL_COLOR;
+    ctx.beginPath();
+    ctx.roundRect(canvasRectX, canvasRectY, gridW, gridH, canvasCornerRadius);
+    ctx.fill();
+
+    // --- Dot grid (inside canvas only, difference blend) ---
+    // Clipped to the canvas rect so no dots spill onto the page bg, and
+    // drawn with 'difference' blend mode so they invert against whatever
+    // the canvas fill is — staying visible on any future color.
+    if (showGrid) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(canvasRectX, canvasRectY, gridW, gridH, canvasCornerRadius);
+      ctx.clip();
+      ctx.globalCompositeOperation = 'difference';
+      ctx.fillStyle = GRID_DOT_COLOR;
+      const dotRadius = 1;
+      // Align dots to the grid cell corners
+      const startX = origin.x;
+      const startY = origin.y;
+      const endX = origin.x + gridW;
+      const endY = origin.y + gridH;
+      for (let y = startY; y <= endY + 0.5; y += cellSize) {
+        for (let x = startX; x <= endX + 0.5; x += cellSize) {
+          ctx.beginPath();
+          ctx.arc(Math.round(x), Math.round(y), dotRadius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
 
     // --- Onion skin ---
     if (onionSkinEnabled) {
@@ -252,21 +281,6 @@ export function PixelCanvas() {
         ctx.stroke();
       }
       ctx.setLineDash([]);
-    }
-
-    // --- Dot grid ---
-    if (showGrid) {
-      const canvasW = canvas.width / dpr;
-      const canvasH = canvas.height / dpr;
-      const dotRadius = 1;
-      ctx.fillStyle = GRID_DOT_COLOR;
-      for (let y = origin.y % cellSize; y <= canvasH; y += cellSize) {
-        for (let x = origin.x % cellSize; x <= canvasW; x += cellSize) {
-          ctx.beginPath();
-          ctx.arc(Math.round(x), Math.round(y), dotRadius, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
     }
 
     ctx.restore();

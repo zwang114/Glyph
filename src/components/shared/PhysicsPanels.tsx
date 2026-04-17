@@ -40,7 +40,7 @@ function createPanelBody(panel: PanelDef, x: number, y: number): Matter.Body {
   const bodyOpts = {
     restitution: 0.25,
     friction: 0.6,
-    frictionAir: 0.02,
+    frictionAir: 0.04,
     density: 0.002,
   };
 
@@ -214,17 +214,20 @@ export const TICKET_SVG_PATH ="M214.412 111.011C218.639 111.225 222 114.72 222 1
 // (r=110.5), connected with concave curves. User-provided SVG at 221x310.
 export const SNOWMAN_SVG_PATH ="M110.5 0C146.675 0 176 29.3253 176 65.5C176 79.4191 171.657 92.323 164.254 102.934C198.106 121.818 221 157.985 221 199.5C221 260.527 171.527 310 110.5 310C49.4725 310 0 260.527 0 199.5C0 157.985 22.8938 121.818 56.7451 102.934C49.3424 92.3231 45 79.4189 45 65.5C45 29.3253 74.3253 0 110.5 0Z";
 
-// Canvas size panel: wide rounded rectangle with 4 semi-circular notches (2 top,
-// 2 bottom) dividing it into three sections. User-provided SVG at 341x103.
-export const CANVAS_SVG_PATH ="M95 0C99.4183 4.67273e-06 103 3.58173 103 8V19.9707C103 24.389 106.582 27.9707 111 27.9707C115.418 27.9707 119 24.389 119 19.9707V8C119 3.58173 122.582 8.38122e-06 127 0H214C218.418 0 222 3.58172 222 8V19.9707C222 24.389 225.582 27.9707 230 27.9707C234.418 27.9707 238 24.389 238 19.9707V8C238 3.58172 241.582 1.34754e-07 246 0H333C337.418 4.67273e-06 341 3.58173 341 8V95C341 99.4183 337.418 103 333 103H246C241.582 103 238 99.4183 238 95V83.0293C238 78.611 234.418 75.0293 230 75.0293C225.582 75.0293 222 78.611 222 83.0293V95C222 99.4183 218.418 103 214 103H127C122.582 103 119 99.4183 119 95V83.0293C119 78.611 115.418 75.0293 111 75.0293C106.582 75.0293 103 78.611 103 83.0293V95C103 99.4183 99.4183 103 95 103H8C3.58173 103 4.25813e-06 99.4183 0 95V8C5.49512e-07 3.58172 3.58172 1.34754e-07 8 0H95Z";
+// Canvas size panel: wide rounded rectangle with 2 semi-circular notches (1 top,
+// 1 bottom) dividing it into two sections (W and H). ViewBox 0 0 228 106.
+// Section 1 (W): x=0-106. Connector: x=106-122 (16 wide). Section 2 (H): x=122-228.
+// Notches: top at y=21.47-29.47 (r=8 circle centered at x=114, y=21.47 outside
+// shape, arcing inward). Bottom notch mirrored at y=76.53-84.53.
+export const CANVAS_SVG_PATH = "M98 0C102.418 4.67273e-06 106 3.58173 106 8V21.4707C106 25.889 109.582 29.4707 114 29.4707C118.418 29.4707 122 25.889 122 21.4707V8C122 3.58173 125.582 8.38122e-06 130 0H220C224.418 0 228 3.58172 228 8V98C228 102.418 224.418 106 220 106H130C125.582 106 122 102.418 122 98V84.5293C122 80.111 118.418 76.5293 114 76.5293C109.582 76.5293 106 80.111 106 84.5293V98C106 102.418 102.418 106 98 106H8C3.58173 106 4.25813e-06 102.418 0 98V8C5.49512e-07 3.58172 3.58172 1.34754e-07 8 0H98Z";
 
 // Onion skin panel: unified shape — pointed stem at top, rounded-rect bulb body,
-// concave connector at bottom. ViewBox 0 0 320 305.
-// Stem (81x28) centered, bulb body (320 wide, r=96) from y=28 to y=288,
-// bottom connector (127x17) centered from y=288 to y=305.
+// concave connector at bottom. ViewBox 0 0 320 225.
+// Stem (81x28) centered, bulb body (320x180, r=90) from y=28 to y=208,
+// bottom connector (127x17) centered from y=208 to y=225.
 export const ONION_SVG_PATH_V2 =(() => {
-  const W = 320, stemH = 28, bulbH = 260, connH = 17;
-  const stemW = 81, connW = 127, br = 96;
+  const W = 320, stemH = 28, bulbH = 180, connH = 17;
+  const stemW = 81, connW = 127, br = 90;
 
   // Stem: centered
   const sx = (W - stemW) / 2; // 99.5
@@ -232,15 +235,16 @@ export const ONION_SVG_PATH_V2 =(() => {
 
   // Bulb body: rounded rect
   const by = stemH, bw = W;
+  const k = br * 0.5523; // bezier control offset for circular corner
   const bulb = `M${br} ${by}` +
     `H${bw - br}` +
-    `C${bw - br + 53.02} ${by} ${bw} ${by + br - 53.02} ${bw} ${by + br}` +
+    `C${bw - br + k} ${by} ${bw} ${by + br - k} ${bw} ${by + br}` +
     `V${by + bulbH - br}` +
-    `C${bw} ${by + bulbH - br + 53.02} ${bw - br + 53.02} ${by + bulbH} ${bw - br} ${by + bulbH}` +
+    `C${bw} ${by + bulbH - br + k} ${bw - br + k} ${by + bulbH} ${bw - br} ${by + bulbH}` +
     `H${br}` +
-    `C${br - 53.02} ${by + bulbH} 0 ${by + bulbH - br + 53.02} 0 ${by + bulbH - br}` +
+    `C${br - k} ${by + bulbH} 0 ${by + bulbH - br + k} 0 ${by + bulbH - br}` +
     `V${by + br}` +
-    `C0 ${by + br - 53.02} ${br - 53.02} ${by} ${br} ${by}Z`;
+    `C0 ${by + br - k} ${br - k} ${by} ${br} ${by}Z`;
 
   // Bottom connector: centered
   const cx = (W - connW) / 2; // 76.5
@@ -260,29 +264,25 @@ export const ONION_SVG_PATH_V2 =(() => {
 // bottom. User-provided SVG at 222x353, tip starts at y=269.904.
 export const PENCIL_SVG_PATH ="M222 269.904C222 272.476 220.764 274.891 218.678 276.395L115.678 350.629C112.884 352.642 109.116 352.642 106.322 350.629L3.32227 276.395C1.23613 274.891 -2.24812e-07 272.476 0 269.904V8C2.06169e-06 3.58172 3.58172 1.04692e-07 8 0H214C218.418 0 222 3.58172 222 8V269.904Z";
 
-// Banner panel (Brush tool redesign): rectangular body with rounded top corners
-// and a downward-pointing triangular tip at the bottom. Reuses the pencil tip
-// geometry (from y=269.904 to y=353) but with a flat rectangular top (y=0 to
-// y=269.904). SVG viewBox 0 0 222 353.
-// Banner: upward-pointing arrow top + rectangular body with rounded bottom corners
-// Topper (triangle): 222x84, Body: 222x186, Total: 222x270
+// Banner panel (Brush tool redesign): upward-pointing arrow top + rectangular
+// body with rounded bottom corners. Topper: 222x85, Body: 222x142, Total: 222x227.
 export const BANNER_SVG_PATH = [
   // Topper triangle (pointing up) — starts at the peak
   'M106.322 1.510C109.116 -0.503 112.884 -0.503 115.678 1.510',
-  'L218.678 75.744C220.764 77.248 222 79.663 222 82.234V83.139',
+  'L218.678 76.744C220.764 78.248 222 80.663 222 83.234V84.139',
   // Right side down to body, rounded bottom-right corner
-  'V262C222 266.418 218.418 270 214 270',
+  'V219C222 223.418 218.418 227 214 227',
   // Bottom edge
-  'H8C3.582 270 0 266.418 0 262',
+  'H8C3.582 227 0 223.418 0 219',
   // Left side up to topper
-  'V83.139V82.234C0 79.663 1.236 77.248 3.322 75.744',
+  'V84.139V83.234C0 80.663 1.236 78.248 3.322 76.744',
   'L106.322 1.510Z',
 ].join('');
 
 // Dumbbell panel: single unified SVG path — two rounded rects connected by a
-// bridge with circular notches on each side. ViewBox 0 0 222 368.
-// Top section: y 0–264 (r=8). Bridge: y 264–280 (16px tall, circular notches r=8).
-// Bottom section: y 280–368 (r=8). Panel is 222px wide; the bridge/connector is
+// bridge with circular notches on each side. ViewBox 0 0 222 302.
+// Top section: y 0–224 (r=8). Bridge: y 224–240 (16px tall, circular notches r=8).
+// Bottom section: y 240–302 (r=8). Panel is 222px wide; the bridge/connector is
 // 206px wide centered (inset 8px each side), matching the Figma Union SVG.
 // The notch is a semicircle: from the bottom of the top rect's corner, arcing
 // inward 8px then back out to the top of the bottom rect's corner.
@@ -291,38 +291,38 @@ export const DUMBBELL_SVG_PATH =[
   'M8 0',
   'C3.582 0 0 3.582 0 8',
   // Left side of top rect down to bottom-left corner
-  'V256',
-  'C0 260.418 3.582 264 8 264',
+  'V216',
+  'C0 220.418 3.582 224 8 224',
   // Bottom edge of top rect to right
   'H214',
-  'C218.418 264 222 260.418 222 256',
+  'C218.418 224 222 220.418 222 216',
   // Right side of top rect up to top-right corner
   'V8',
   'C222 3.582 218.418 0 214 0',
   // Top edge back to start
   'H8 Z',
   // Bottom rect as separate subpath
-  'M8 280',
-  'C3.582 280 0 283.582 0 288',
+  'M8 240',
+  'C3.582 240 0 243.582 0 248',
   // Left side of bottom rect
-  'V360',
-  'C0 364.418 3.582 368 8 368',
+  'V294',
+  'C0 298.418 3.582 302 8 302',
   // Bottom edge
   'H214',
-  'C218.418 368 222 364.418 222 360',
+  'C218.418 302 222 298.418 222 294',
   // Right side of bottom rect
-  'V288',
-  'C222 283.582 218.418 280 214 280',
+  'V248',
+  'C222 243.582 218.418 240 214 240',
   'H8 Z',
-  // Bridge connector (Union shape) — centered at x=8, y=264, 206x16
-  // The connector path: starts at right (x=214, y=264), goes left, with
+  // Bridge connector (Union shape) — centered at x=8, y=224, 206x16
+  // The connector path: starts at right (x=214, y=224), goes left, with
   // semicircular notches biting inward on each side
-  'M214 264',
-  'C209.582 264 206 267.582 206 272',  // right notch: arc inward
-  'C206 276.418 209.582 280 214 280',  // right notch: arc back out
+  'M214 224',
+  'C209.582 224 206 227.582 206 232',  // right notch: arc inward
+  'C206 236.418 209.582 240 214 240',  // right notch: arc back out
   'H8',                                  // bottom edge to left
-  'C12.418 280 16 276.418 16 272',      // left notch: arc inward
-  'C16 267.582 12.418 264 8 264',       // left notch: arc back out
+  'C12.418 240 16 236.418 16 232',      // left notch: arc inward
+  'C16 227.582 12.418 224 8 224',       // left notch: arc back out
   'H214 Z',                              // top edge back to right
 ].join(' ');
 
@@ -364,9 +364,14 @@ function PhysicsPanelsInner(
   const dragRef = useRef<{ id: string; constraint: Matter.Constraint } | null>(null);
   const mouseBodyRef = useRef<Matter.Body | null>(null);
   const wakeRef = useRef<() => void>(() => {});
+  const wallsRef = useRef<{ floor: Matter.Body; ceiling: Matter.Body; left: Matter.Body; right: Matter.Body; drawer: Matter.Body } | null>(null);
   // Keep latest props accessible via refs to avoid stale closures
   const panelsRef = useRef(panels);
   panelsRef.current = panels;
+  const containerWidthRef = useRef(containerWidth);
+  containerWidthRef.current = containerWidth;
+  const containerHeightRef = useRef(containerHeight);
+  containerHeightRef.current = containerHeight;
   const drawerOpenRef = useRef(drawerOpen);
   drawerOpenRef.current = drawerOpen;
   const drawerRightEdgeRef = useRef(drawerRightEdge);
@@ -374,35 +379,45 @@ function PhysicsPanelsInner(
   const onPanelDroppedInDrawerRef = useRef(onPanelDroppedInDrawer);
   onPanelDroppedInDrawerRef.current = onPanelDroppedInDrawer;
 
+  // Initialize physics engine once
   useEffect(() => {
     const engine = Matter.Engine.create({
       gravity: { x: 0, y: 1, scale: 0.001 },
     });
     engineRef.current = engine;
 
+    const cw = containerWidthRef.current;
+    const ch = containerHeightRef.current;
     const wallThickness = 60;
     const floor = Matter.Bodies.rectangle(
-      containerWidth / 2, containerHeight + wallThickness / 2, containerWidth * 2, wallThickness,
+      cw / 2, ch + wallThickness / 2, cw * 2, wallThickness,
       { isStatic: true, restitution: 0.3, friction: 0.8 }
     );
     const ceiling = Matter.Bodies.rectangle(
-      containerWidth / 2, -wallThickness - 20, containerWidth * 2, wallThickness,
+      cw / 2, -wallThickness - 20, cw * 2, wallThickness,
       { isStatic: true, restitution: 0.3 }
     );
     const leftWall = Matter.Bodies.rectangle(
-      -wallThickness / 2, containerHeight / 2, wallThickness, containerHeight * 2,
+      -wallThickness / 2, ch / 2, wallThickness, ch * 2,
       { isStatic: true, restitution: 0.3 }
     );
     const rightWall = Matter.Bodies.rectangle(
-      containerWidth + wallThickness / 2, containerHeight / 2, wallThickness, containerHeight * 2,
+      cw + wallThickness / 2, ch / 2, wallThickness, ch * 2,
       { isStatic: true, restitution: 0.3 }
     );
-    Matter.Composite.add(engine.world, [floor, ceiling, leftWall, rightWall]);
+    // Drawer wall: dynamically repositioned when the drawer opens/closes. Parks
+    // far off-screen when the drawer is closed so it doesn't affect anything.
+    const drawerWall = Matter.Bodies.rectangle(
+      -5000, ch / 2, wallThickness, ch * 2,
+      { isStatic: true, restitution: 0.3 }
+    );
+    Matter.Composite.add(engine.world, [floor, ceiling, leftWall, rightWall, drawerWall]);
+    wallsRef.current = { floor, ceiling, left: leftWall, right: rightWall, drawer: drawerWall };
 
-    for (const panel of panels) {
+    for (const panel of panelsRef.current) {
       const margin = 60;
-      const spawnX = margin + Math.random() * (containerWidth - panel.width - margin * 2);
-      const spawnY = margin + Math.random() * (containerHeight - panel.height - margin * 2);
+      const spawnX = margin + Math.random() * (cw - panel.width - margin * 2);
+      const spawnY = margin + Math.random() * (ch - panel.height - margin * 2);
       const body = createPanelBody(panel, spawnX, spawnY);
       Matter.Composite.add(engine.world, body);
       bodiesRef.current.set(panel.id, body);
@@ -415,7 +430,7 @@ function PhysicsPanelsInner(
     // Initial DOM placement
     for (const [id, body] of bodiesRef.current) {
       const el = panelRefs.current.get(id);
-      const panel = panels.find((p) => p.id === id);
+      const panel = panelsRef.current.find((p) => p.id === id);
       if (el && panel) {
         el.style.left = `${body.position.x - panel.width / 2}px`;
         el.style.top = `${body.position.y - panel.height / 2}px`;
@@ -431,17 +446,43 @@ function PhysicsPanelsInner(
       lastTime = now;
       Matter.Engine.update(engine, delta);
 
-      // Clamp so panel edges stay within container (center clamp = halfSize)
+      const curW = containerWidthRef.current;
+      const curH = containerHeightRef.current;
+      const draggingId = dragRef.current?.id ?? null;
+      const MAX_TILT = 0.35; // ~20° soft rotation cap
+
+      // Soft clamp + angular damping + rotation cap
       for (const [id, body] of bodiesRef.current) {
         const panel = panelsRef.current.find((p) => p.id === id);
-        if (!panel) continue;
+        if (!panel || body.isStatic) continue;
+
+        // Angular damping — Matter's default is too weak; kill runaway spin.
+        Matter.Body.setAngularVelocity(body, body.angularVelocity * 0.92);
+
+        // Rotation soft cap: bounce back if a collision throws a panel past the
+        // cap. Skip while the user is dragging so interactions stay responsive.
+        if (id !== draggingId) {
+          if (body.angle > MAX_TILT) {
+            Matter.Body.setAngle(body, MAX_TILT);
+            Matter.Body.setAngularVelocity(body, -body.angularVelocity * 0.3);
+          } else if (body.angle < -MAX_TILT) {
+            Matter.Body.setAngle(body, -MAX_TILT);
+            Matter.Body.setAngularVelocity(body, -body.angularVelocity * 0.3);
+          }
+        }
+
+        // Position soft clamp — damp velocity instead of zeroing so collisions
+        // don't feel like a teleport.
         const halfW = panel.width / 2;
         const halfH = panel.height / 2;
-        const bx = Math.max(halfW, Math.min(containerWidth - halfW, body.position.x));
-        const by = Math.max(halfH, Math.min(containerHeight - halfH, body.position.y));
+        const bx = Math.max(halfW, Math.min(curW - halfW, body.position.x));
+        const by = Math.max(halfH, Math.min(curH - halfH, body.position.y));
         if (bx !== body.position.x || by !== body.position.y) {
           Matter.Body.setPosition(body, { x: bx, y: by });
-          Matter.Body.setVelocity(body, { x: 0, y: 0 });
+          Matter.Body.setVelocity(body, {
+            x: body.velocity.x * 0.5,
+            y: body.velocity.y * 0.5,
+          });
         }
       }
 
@@ -488,7 +529,38 @@ function PhysicsPanelsInner(
       Matter.Engine.clear(engine);
       bodiesRef.current.clear();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Reposition walls when container size changes (without recreating the engine)
+  useEffect(() => {
+    const walls = wallsRef.current;
+    if (!walls) return;
+    const wallThickness = 60;
+    Matter.Body.setPosition(walls.floor, { x: containerWidth / 2, y: containerHeight + wallThickness / 2 });
+    Matter.Body.setPosition(walls.ceiling, { x: containerWidth / 2, y: -wallThickness - 20 });
+    Matter.Body.setPosition(walls.left, { x: -wallThickness / 2, y: containerHeight / 2 });
+    Matter.Body.setPosition(walls.right, { x: containerWidth + wallThickness / 2, y: containerHeight / 2 });
+    // Drawer wall keeps its x (managed by drawer effect below) but tracks height.
+    Matter.Body.setPosition(walls.drawer, { x: walls.drawer.position.x, y: containerHeight / 2 });
+    wakeRef.current();
   }, [containerWidth, containerHeight]);
+
+  // Move the drawer wall in/out based on drawer state. When open, canvas panels
+  // cannot drift past drawerRightEdge. When closed, the wall parks off-screen.
+  // While a panel is being dragged, the wall also parks off-screen so the
+  // user can carry panels into the drawer region — the drop handler decides
+  // whether to hand off to the drawer on pointerup.
+  useEffect(() => {
+    const walls = wallsRef.current;
+    if (!walls) return;
+    const wallThickness = 60;
+    const edge = drawerRightEdge ?? 0;
+    const active = drawerOpen && edge > 0 && draggingPanelId === null;
+    const targetX = active ? edge + wallThickness / 2 : -5000;
+    Matter.Body.setPosition(walls.drawer, { x: targetX, y: containerHeightRef.current / 2 });
+    wakeRef.current();
+  }, [drawerOpen, drawerRightEdge, draggingPanelId]);
 
   // Remove bodies for panels that left (e.g. dropped into drawer)
   useEffect(() => {
@@ -539,8 +611,14 @@ function PhysicsPanelsInner(
       if (isPinned && !body.isStatic) {
         Matter.Body.setStatic(body, true);
         Matter.Body.setAngle(body, 0);
+        Matter.Body.setVelocity(body, { x: 0, y: 0 });
+        Matter.Body.setAngularVelocity(body, 0);
       } else if (!isPinned && body.isStatic) {
         Matter.Body.setStatic(body, false);
+        // Clear any residual motion so the panel doesn't re-inherit stale tilt.
+        Matter.Body.setAngle(body, 0);
+        Matter.Body.setVelocity(body, { x: 0, y: 0 });
+        Matter.Body.setAngularVelocity(body, 0);
         needsWake = true;
       }
     }
@@ -579,12 +657,18 @@ function PhysicsPanelsInner(
 
     Matter.Body.setPosition(mouseBody, { x: e.clientX, y: e.clientY - 44 });
 
+    // Convert the grab offset into body-local coords so a rotated panel doesn't
+    // jerk when the drag starts. Matter.js expects pointB in the body's frame.
+    const dx = e.clientX - body.position.x;
+    const dy = (e.clientY - 44) - body.position.y;
+    const cos = Math.cos(-body.angle);
+    const sin = Math.sin(-body.angle);
     const constraint = Matter.Constraint.create({
       bodyA: mouseBody,
       bodyB: body,
       pointB: {
-        x: e.clientX - body.position.x,
-        y: (e.clientY - 44) - body.position.y,
+        x: dx * cos - dy * sin,
+        y: dx * sin + dy * cos,
       },
       stiffness: 0.7, damping: 0.3, length: 0,
     });
@@ -599,6 +683,8 @@ function PhysicsPanelsInner(
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     lastPointerRef.current = { x: e.clientX, y: e.clientY };
     if (!dragRef.current || !mouseBodyRef.current) return;
+    // Allow the cursor to enter the drawer region so panels can be dropped in.
+    // The drop handler decides whether to hand off to the drawer on pointerup.
     const mx = Math.max(0, Math.min(containerWidth, e.clientX));
     const my = Math.max(0, Math.min(containerHeight, e.clientY - 44));
     Matter.Body.setPosition(mouseBodyRef.current, { x: mx, y: my });
@@ -618,8 +704,15 @@ function PhysicsPanelsInner(
     const edge = drawerRightEdgeRef.current;
     const mouseX = lastPointerRef.current.x;
 
-    // Check if the cursor is inside the open drawer
-    if (body && isDrawerOpen && edge && edge > 0 && mouseX < edge) {
+    // Drop into drawer only when the body's center has clearly crossed into
+    // the drawer region AND the cursor confirms intent. Using the body position
+    // (not just cursor) prevents a flick that leaves the body on the canvas
+    // from incorrectly handing off to the drawer.
+    const panel = panelsRef.current.find((p) => p.id === panelId);
+    const halfW = panel ? panel.width / 2 : 0;
+    const bodyInDrawer = body && edge ? body.position.x < edge - halfW / 1.5 : false;
+    const cursorInDrawer = edge ? mouseX < edge : false;
+    if (body && isDrawerOpen && edge && edge > 0 && bodyInDrawer && cursorInDrawer) {
       Matter.Composite.remove(engineRef.current.world, dragRef.current.constraint);
       Matter.Composite.remove(engineRef.current.world, body);
       bodiesRef.current.delete(panelId);
@@ -651,6 +744,7 @@ function PhysicsPanelsInner(
       style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
     >
       {panels.map((panel) => {
         const isPinned = pinned.has(panel.id);
@@ -668,6 +762,7 @@ function PhysicsPanelsInner(
           onPointerDown: (e: React.PointerEvent) => handleDragStart(e, panel.id),
           onPointerMove: handlePointerMove,
           onPointerUp: handlePointerUp,
+          onPointerCancel: handlePointerUp,
           onContextMenu: (e: React.MouseEvent) => handleTogglePin(e, panel.id),
           style: { cursor: isPinned ? 'default' : 'grab' } as React.CSSProperties,
         };
@@ -718,7 +813,7 @@ function PhysicsPanelsInner(
               <svg
                 width={w}
                 height={h}
-                viewBox="0 0 341 103"
+                viewBox="0 0 228 106"
                 preserveAspectRatio="none"
                 style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
               >
@@ -751,7 +846,7 @@ function PhysicsPanelsInner(
               <svg
                 width={w}
                 height={h}
-                viewBox="0 0 320 305"
+                viewBox="0 0 320 225"
                 preserveAspectRatio="none"
                 style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
               >
@@ -786,7 +881,7 @@ function PhysicsPanelsInner(
               <svg
                 width={w}
                 height={h}
-                viewBox="0 0 222 270"
+                viewBox="0 0 222 227"
                 preserveAspectRatio="none"
                 style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
               >
@@ -889,7 +984,7 @@ function PhysicsPanelsInner(
               <svg
                 width={w}
                 height={h}
-                viewBox="0 0 222 368"
+                viewBox="0 0 222 302"
                 preserveAspectRatio="none"
                 style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
               >

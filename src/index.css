@@ -160,6 +160,8 @@ body {
   border-radius: 16px;
   z-index: 10;
   user-select: none;
+  touch-action: none;
+  -webkit-user-select: none;
 }
 
 .floating-panel-header {
@@ -309,15 +311,9 @@ body {
   font-family: 'Noto Sans', sans-serif;
 }
 
+/* Header removed per Figma redesign */
 .banner-header {
-  position: absolute;
-  top: 84px;
-  left: 16px;
-  right: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  z-index: 2;
+  display: none;
 }
 
 .banner-title {
@@ -331,7 +327,7 @@ body {
 
 .banner-body {
   position: absolute;
-  top: 110px;
+  top: 85px;
   left: 16px;
   right: 16px;
   bottom: 16px;
@@ -407,22 +403,9 @@ body {
   font-family: 'Noto Sans', sans-serif;
 }
 
-/* Header: drag handle + title stacked vertically, centered in bulb top */
+/* Header removed per Figma redesign — kept for legacy empty render */
 .onion-header {
-  position: absolute;
-  top: 44px; /* below the stem (28px) + padding */
-  left: 0;
-  right: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  z-index: 2;
-  pointer-events: none;
-}
-
-.onion-header > * {
-  pointer-events: auto;
+  display: none;
 }
 
 .onion-panel .floating-panel-drag-icon {
@@ -442,19 +425,23 @@ body {
   font-weight: 300;
   font-size: 16px;
   letter-spacing: 1.2px;
+  text-transform: uppercase;
   color: #000;
 }
 
 .onion-body {
   position: absolute;
-  top: 128px; /* below header */
-  left: 48px;
-  right: 48px;
-  bottom: 50px; /* above bottom connector */
+  /* stem 28px + bulb pt 40px = 68px */
+  top: 68px;
+  left: 32px;
+  right: 32px;
+  /* connector 17px + bulb pb 40px = 57px */
+  bottom: 57px;
   z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: 24px;
   pointer-events: none;
 }
 
@@ -482,7 +469,6 @@ body {
   height: 40px;
   border: 1px solid #000;
   border-radius: 1000px;
-  background: #FFF18B;
   color: #000;
   font-family: 'Noto Sans', sans-serif;
   font-weight: 400;
@@ -497,13 +483,20 @@ body {
   padding: 0;
 }
 
-.onion-toggle-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
+/* OFF button: tan bg, blends with panel */
+.onion-toggle-btn--off {
+  background: #c7a07c;
 }
 
-.onion-toggle-btn--active {
+/* SERIF/SANS unselected: transparent ghost */
+.onion-toggle-btn--ghost {
+  background: transparent;
+}
+
+/* Selected state: any button goes black with tan text */
+.onion-toggle-btn--selected {
   background: #000;
-  color: #FFF18B;
+  color: #c7a07c;
   border-color: #000;
 }
 
@@ -546,7 +539,7 @@ body {
 }
 
 .onion-controls-v2 .density-slider-thumb {
-  background: #FFF18B;
+  background: #c7a07c;
 }
 
 /* Canvas Size panel (notched 3-section pink bar — horizontal layout) */
@@ -578,43 +571,34 @@ body {
   background: #fff;
 }
 
-/* CANVAS title in the left section */
+/* CANVAS label removed per Figma redesign */
 .canvas-panel-label {
-  position: absolute;
-  top: 56px;
-  left: 51px;
-  transform: translateX(-50%);
-  font-family: 'Noto Sans', sans-serif;
-  font-weight: 300;
-  font-size: 16px;
-  letter-spacing: 1.2px;
-  color: #000;
-  text-transform: uppercase;
-  z-index: 2;
-  white-space: nowrap;
+  display: none;
 }
 
 /* Body holds the two input groups — positioned in sections 2 and 3 */
 .canvas-panel-body {
   position: absolute;
-  /* Sections 2 and 3 start after the first notch bridge (x=103 → x=119) */
-  left: 119px;
-  top: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   z-index: 2;
   display: flex;
   align-items: stretch;
 }
 
-/* Each W/H dimension group fills one section */
+/* Each W/H dimension group fills one section. Section 1: 0-106. Connector: 106-122 (skip). Section 2: 122-228. */
 .canvas-dim-group {
-  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  padding: 16px;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  width: 106px;
+}
+
+/* Skip 16px connector gap between the two groups */
+.canvas-dim-group:first-child {
+  margin-right: 16px;
 }
 
 .canvas-dim-label {
@@ -628,7 +612,8 @@ body {
 .canvas-input-box {
   background: #000;
   border-radius: 8px;
-  padding: 8px;
+  padding: 8px 24px;
+  height: 38px;
   width: 100%;
   display: flex;
   align-items: center;
@@ -642,7 +627,7 @@ body {
   border: none;
   font-family: 'Noto Sans', sans-serif;
   font-weight: 400;
-  font-size: 10px;
+  font-size: 16px;
   letter-spacing: 0.5px;
   text-align: center;
   outline: none;
@@ -669,18 +654,9 @@ body {
   overflow: visible;
 }
 
+/* Header removed per Figma redesign */
 .pill-header {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  padding-top: 16px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  z-index: 2;
-  pointer-events: none;
+  display: none;
 }
 
 .pill-header > * {
@@ -709,13 +685,14 @@ body {
 
 .pill-body {
   position: absolute;
-  top: 84px;
+  top: 37px;
   left: 16px;
   right: 16px;
-  bottom: 40px;
+  bottom: 37px;
   z-index: 2;
   display: flex;
   justify-content: center;
+  align-items: center;
   pointer-events: none;
 }
 
@@ -964,16 +941,9 @@ body {
   overflow: visible;
 }
 
+/* Header removed per Figma redesign */
 .dumbbell-header {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  padding: 16px 16px 0 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  z-index: 2;
+  display: none;
 }
 
 .dumbbell-title {
@@ -998,7 +968,7 @@ body {
 
 .dumbbell-top {
   position: absolute;
-  top: 40px;
+  top: 16px;
   left: 16px;
   right: 16px;
   display: flex;
@@ -1007,12 +977,11 @@ body {
 
 .dumbbell-bottom {
   position: absolute;
-  top: 296px;
+  top: 248px;
   left: 16px;
   right: 16px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
 
 
@@ -1048,13 +1017,34 @@ body {
 }
 
 .density-slider-thumb {
+  --thumb-w: 55px;
   position: absolute;
-  width: 8px;
-  height: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: var(--thumb-w);
+  padding: 4px 4px 4px 8px;
+  box-sizing: border-box;
   background: #879900;
-  border-radius: 8px;
-  top: 0;
+  border-radius: 4px;
+  top: 50%;
+  transform: translateY(-50%);
   pointer-events: none;
+  font-family: 'Noto Sans', sans-serif;
+  font-weight: 400;
+  line-height: normal;
+  white-space: nowrap;
+}
+
+.density-slider-thumb-grip {
+  flex-shrink: 0;
+  display: block;
+}
+
+.density-slider-thumb-value {
+  font-size: 10px;
+  color: #000;
+  width: 27.143px;
 }
 
 /* Mirror Selector (radial dial with 4 options) */
@@ -1476,7 +1466,7 @@ body {
   padding: 0 var(--spacing-md);
   gap: var(--spacing-lg);
   flex-shrink: 0;
-  background: #FFFBF6;
+  background: #F9F1E9;
   color: #1a1a1a;
 }
 
@@ -1543,7 +1533,7 @@ body {
   padding: 0 var(--spacing-md);
   gap: var(--spacing-lg);
   flex-shrink: 0;
-  background: #FFFBF6;
+  background: #F9F1E9;
   color: #1a1a1a;
 }
 
@@ -1999,6 +1989,8 @@ body {
 .drawer-panel {
   position: absolute;
   user-select: none;
+  touch-action: none;
+  -webkit-user-select: none;
 }
 
 .drawer-panel--dragging {

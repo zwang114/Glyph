@@ -23,11 +23,11 @@ interface ToolDrawerProps {
 const SHAPE_SVGS: Record<string, { path: string; viewBox: string }> = {
   ticket:   { path: TICKET_SVG_PATH,   viewBox: '0 0 222 175' },
   snowman:  { path: SNOWMAN_SVG_PATH,  viewBox: '0 0 221 310' },
-  canvas:   { path: CANVAS_SVG_PATH,   viewBox: '0 0 341 103' },
-  onion:    { path: ONION_SVG_PATH_V2, viewBox: '0 0 320 305' },
+  canvas:   { path: CANVAS_SVG_PATH,   viewBox: '0 0 228 106' },
+  onion:    { path: ONION_SVG_PATH_V2, viewBox: '0 0 320 225' },
   pencil:   { path: PENCIL_SVG_PATH,   viewBox: '0 0 222 353' },
-  banner:   { path: BANNER_SVG_PATH,   viewBox: '0 0 222 270' },
-  dumbbell: { path: DUMBBELL_SVG_PATH, viewBox: '0 0 222 368' },
+  banner:   { path: BANNER_SVG_PATH,   viewBox: '0 0 222 227' },
+  dumbbell: { path: DUMBBELL_SVG_PATH, viewBox: '0 0 222 302' },
 };
 
 function getShapeSvgInfo(shape?: string) {
@@ -55,7 +55,7 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
   const loopRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const wakeRef = useRef<() => void>(() => {});
   const prevOffsetRef = useRef(0);
-  const wallsRef = useRef<{ floor: Matter.Body; left: Matter.Body; right: Matter.Body } | null>(null);
+  const wallsRef = useRef<{ floor: Matter.Body; ceiling: Matter.Body; left: Matter.Body; right: Matter.Body } | null>(null);
   const panelsRef = useRef(panels);
   panelsRef.current = panels;
 
@@ -75,14 +75,17 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
     const floor = Matter.Bodies.rectangle(
       drawerWidth / 2, containerHeight + wallThickness / 2, drawerWidth * 2, wallThickness, wallOpts
     );
+    const ceiling = Matter.Bodies.rectangle(
+      drawerWidth / 2, -wallThickness / 2, drawerWidth * 2, wallThickness, wallOpts
+    );
     const left = Matter.Bodies.rectangle(
       -wallThickness / 2, containerHeight / 2, wallThickness, containerHeight * 2, wallOpts
     );
     const right = Matter.Bodies.rectangle(
       drawerWidth + wallThickness / 2, containerHeight / 2, wallThickness, containerHeight * 2, wallOpts
     );
-    Matter.Composite.add(engine.world, [floor, left, right]);
-    wallsRef.current = { floor, left, right };
+    Matter.Composite.add(engine.world, [floor, ceiling, left, right]);
+    wallsRef.current = { floor, ceiling, left, right };
 
     const mouseBody = Matter.Bodies.circle(0, 0, 1, { isStatic: true, collisionFilter: { mask: 0 } });
     Matter.Composite.add(engine.world, mouseBody);
@@ -96,11 +99,26 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
       lastTime = now;
       Matter.Engine.update(engine, delta);
 
-      // Soft clamp — nudge bodies back in bounds instead of teleporting
+      // Soft clamp + angular damping + rotation cap (mirrors canvas physics)
       const currentPanels = panelsRef.current;
+      const draggingId = panelDragRef.current?.id ?? null;
+      const MAX_TILT = 0.35;
       for (const [id, body] of bodiesRef.current) {
         const panel = currentPanels.find((p) => p.id === id);
-        if (!panel) continue;
+        if (!panel || body.isStatic) continue;
+
+        Matter.Body.setAngularVelocity(body, body.angularVelocity * 0.92);
+
+        if (id !== draggingId) {
+          if (body.angle > MAX_TILT) {
+            Matter.Body.setAngle(body, MAX_TILT);
+            Matter.Body.setAngularVelocity(body, -body.angularVelocity * 0.3);
+          } else if (body.angle < -MAX_TILT) {
+            Matter.Body.setAngle(body, -MAX_TILT);
+            Matter.Body.setAngularVelocity(body, -body.angularVelocity * 0.3);
+          }
+        }
+
         const halfW = panel.width / 2;
         const halfH = panel.height / 2;
         const bx = Math.max(halfW, Math.min(drawerWidth - halfW, body.position.x));
@@ -177,7 +195,11 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
         let y: number;
         const dropPos = dropPositions?.get(panel.id);
         if (dropPos) {
-          x = Math.max(panel.width / 2, Math.min(drawerWidth - panel.width / 2, dropPos.x));
+          // Clamp inside the drawer's currently visible region. Using `offset`
+          // (actual open width) instead of the 2/3 design width prevents
+          // panels from landing off-screen when the drawer is only partly open.
+          const visibleW = Math.max(panel.width, offset || drawerWidth);
+          x = Math.max(panel.width / 2, Math.min(visibleW - panel.width / 2, dropPos.x));
           y = Math.max(panel.height / 2, Math.min(containerHeight - panel.height / 2, dropPos.y));
           dropPositions?.delete(panel.id);
         } else {
@@ -277,12 +299,18 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
 
     Matter.Body.setPosition(mouseBody, { x: localX, y: localY });
 
+    // Rotate the grab offset into body-local coords so a tilted panel doesn't
+    // jerk when grabbed.
+    const dx = localX - body.position.x;
+    const dy = localY - body.position.y;
+    const cos = Math.cos(-body.angle);
+    const sin = Math.sin(-body.angle);
     const constraint = Matter.Constraint.create({
       bodyA: mouseBody,
       bodyB: body,
       pointB: {
-        x: localX - body.position.x,
-        y: localY - body.position.y,
+        x: dx * cos - dy * sin,
+        y: dx * sin + dy * cos,
       },
       stiffness: 0.7, damping: 0.3, length: 0,
     });
@@ -382,9 +410,11 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
 
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
     return () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
     };
   }, [physicsDragging, dragOutPanel, offset, onPanelDraggedOut]);
 
@@ -427,6 +457,7 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
         >
           <div className="tool-drawer-handle-grip">
             <span /><span /><span />

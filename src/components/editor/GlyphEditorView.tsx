@@ -106,7 +106,7 @@ export function GlyphEditorView() {
 
   const panelDefs = [
     {
-      id: 'tools', width: 222, height: 270, color: '#FF6200', title: 'BRUSH', shape: 'banner' as const,
+      id: 'tools', width: 222, height: 227, color: '#FF6200', title: '', shape: 'banner' as const,
       children: (
         <RadialBrushSelector
           value={activeTool === 'eraser' ? 'pixel' : activeTool}
@@ -115,17 +115,13 @@ export function GlyphEditorView() {
       ),
     },
     {
-      id: 'shape', width: 222, height: 368, color: '#879900', title: 'SHAPE', shape: 'dumbbell' as const,
+      id: 'shape', width: 222, height: 302, color: '#879900', title: '', shape: 'dumbbell' as const,
       children: (
         <>
           <div className="dumbbell-top">
             <RadialShapeSelector value={pixelShape} onChange={setPixelShape} />
           </div>
           <div className="dumbbell-bottom">
-            <div className="fp-density-row">
-              <span className="fp-density-label">PATTERN DENSITY</span>
-              <span className="fp-density-value">{Math.round(pixelDensity * 100)}%</span>
-            </div>
             <DensitySlider
               value={pixelDensity}
               min={0.15}
@@ -137,13 +133,13 @@ export function GlyphEditorView() {
       ),
     },
     {
-      id: 'mirror', width: 222, height: 318, color: '#aeaeae', title: 'Mirror', shape: 'pill' as const,
+      id: 'mirror', width: 222, height: 264, color: '#aeaeae', title: '', shape: 'pill' as const,
       children: (
         <RadialMirrorSelector value={mirrorMode} onChange={setMirrorMode} />
       ),
     },
     {
-      id: 'canvas', width: 341, height: 103, color: '#FF92BE', title: 'CANVAS', shape: 'canvas' as const,
+      id: 'canvas', width: 228, height: 106, color: '#FF92BE', title: '', shape: 'canvas' as const,
       children: (
         <>
           <div className="canvas-dim-group">
@@ -184,40 +180,35 @@ export function GlyphEditorView() {
     {
       id: 'onion',
       width: 320,
-      height: 305,
-      color: '#FFF18B',
-      title: 'Onion Skin',
+      height: 225,
+      color: '#c7a07c',
+      title: '',
       shape: 'onion' as const,
       children: (
         <div className="onion-controls-v2">
           {/* 3-way toggle: OFF / SERIF / SANS */}
           <div className="onion-toggle-row">
             <button
-              className={`onion-toggle-btn ${!onionSkinEnabled ? 'onion-toggle-btn--active' : ''}`}
+              className={`onion-toggle-btn onion-toggle-btn--off ${!onionSkinEnabled ? 'onion-toggle-btn--selected' : ''}`}
               onClick={() => setOnionSkinEnabled(false)}
             >OFF</button>
             <button
-              className={`onion-toggle-btn ${onionSkinEnabled && onionSkinFont === 'serif' ? 'onion-toggle-btn--active' : ''}`}
+              className={`onion-toggle-btn onion-toggle-btn--ghost ${onionSkinEnabled && onionSkinFont === 'serif' ? 'onion-toggle-btn--selected' : ''}`}
               onClick={() => { setOnionSkinEnabled(true); setOnionSkinFont('serif'); }}
             >SERIF</button>
             <button
-              className={`onion-toggle-btn ${onionSkinEnabled && onionSkinFont === 'sans-serif' ? 'onion-toggle-btn--active' : ''}`}
+              className={`onion-toggle-btn onion-toggle-btn--ghost ${onionSkinEnabled && onionSkinFont === 'sans-serif' ? 'onion-toggle-btn--selected' : ''}`}
               onClick={() => { setOnionSkinEnabled(true); setOnionSkinFont('sans-serif'); }}
             >SANS</button>
           </div>
-          {/* Size slider */}
-          <div className="onion-size-section">
-            <div className="onion-size-header">
-              <span className="onion-size-label">SIZE</span>
-              <span className="onion-size-value">{Math.round(onionSkinSize * 100)}%</span>
-            </div>
-            <DensitySlider
-              value={onionSkinSize}
-              min={0.3}
-              max={2}
-              onChange={setOnionSkinSize}
-            />
-          </div>
+          {/* Size slider (label removed per Figma redesign — value shown inline on thumb) */}
+          <DensitySlider
+            value={onionSkinSize}
+            min={0.3}
+            max={2}
+            onChange={setOnionSkinSize}
+          />
+
         </div>
       ),
     },

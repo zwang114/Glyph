@@ -57,8 +57,21 @@ export function DensitySlider({ value, min, max, onChange }: DensitySliderProps)
       <div className="density-slider-track">
         <div
           className="density-slider-thumb"
-          style={{ left: `calc(${fraction * 100}% - 4px)` }}
-        />
+          style={{ left: `calc((100% - var(--thumb-w, 48px)) * ${fraction})` }}
+        >
+          <svg
+            className="density-slider-thumb-grip"
+            width="8"
+            height="11"
+            viewBox="0 0 8 11"
+            aria-hidden="true"
+          >
+            <rect x="0" y="0" width="1" height="11" fill="#000" />
+            <rect x="3.5" y="0" width="1" height="11" fill="#000" />
+            <rect x="7" y="0" width="1" height="11" fill="#000" />
+          </svg>
+          <span className="density-slider-thumb-value">{Math.round(fraction * 100)}%</span>
+        </div>
       </div>
     </div>
   );

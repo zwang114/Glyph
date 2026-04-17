@@ -45,10 +45,20 @@ export function compileFont(
   const pxSize = project.unitsPerEm / (sampleGlyph?.gridHeight || 32);
 
   const notdefPath = new opentype.Path();
+  const nw = pxSize * 12;
+  const nh = project.unitsPerEm;
+  const stroke = pxSize; // 1 pixel-unit stroke width
+  // Outer rectangle (clockwise)
   notdefPath.moveTo(0, 0);
-  notdefPath.lineTo(pxSize * 12, 0);
-  notdefPath.lineTo(pxSize * 12, project.unitsPerEm);
-  notdefPath.lineTo(0, project.unitsPerEm);
+  notdefPath.lineTo(nw, 0);
+  notdefPath.lineTo(nw, nh);
+  notdefPath.lineTo(0, nh);
+  notdefPath.close();
+  // Inner rectangle (counter-clockwise) to create outline
+  notdefPath.moveTo(stroke, stroke);
+  notdefPath.lineTo(stroke, nh - stroke);
+  notdefPath.lineTo(nw - stroke, nh - stroke);
+  notdefPath.lineTo(nw - stroke, stroke);
   notdefPath.close();
 
   const notdefGlyph = new opentype.Glyph({
@@ -62,9 +72,13 @@ export function compileFont(
 
   for (const glyph of Object.values(glyphs)) {
     const hasPixels = glyph.pixels.some((row) => row.some(Boolean));
-    if (!hasPixels) continue;
 
-    const path = glyphToPath(glyph, project, shape, density);
+    // Always include space (U+0020) — it needs advance width even without pixels
+    if (!hasPixels && glyph.unicode !== 0x0020) continue;
+
+    const path = hasPixels
+      ? glyphToPath(glyph, project, shape, density)
+      : new opentype.Path();
     const advanceWidth = Math.round(glyph.advanceWidth * pxSize);
 
     otGlyphs.push(

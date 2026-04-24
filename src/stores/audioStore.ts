@@ -30,7 +30,7 @@ interface AudioActions {
 export const useAudioStore = create<AudioState & AudioActions>()((set, get) => ({
   isPlaying: false,
   muted: false,
-  bpm: 120,
+  bpm: 160,
   isLooping: false,
   playheadCols: {},
 

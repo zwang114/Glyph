@@ -1197,6 +1197,8 @@ export function PixelCanvas() {
 
     // ── Update hover (for cell preview + hover outline) ────────────
     const hit = frameAtScreen(sx, sy);
+    const prevHoverCanvasId = hoverCanvasIdRef.current;
+    const prevHoverCell = hoverCellRef.current;
     hoverCanvasIdRef.current = hit ? hit.id : null;
     if (hit) {
       const frame = store.canvases[hit.id];
@@ -1207,6 +1209,11 @@ export function PixelCanvas() {
     } else {
       hoverCellRef.current = null;
     }
+    const hoverChanged =
+      prevHoverCanvasId !== hoverCanvasIdRef.current ||
+      prevHoverCell?.canvasId !== hoverCellRef.current?.canvasId ||
+      prevHoverCell?.row !== hoverCellRef.current?.row ||
+      prevHoverCell?.col !== hoverCellRef.current?.col;
 
     // ── Continue drawing stroke ────────────────────────────────────
     if (drawingRef.current && drawCanvasIdRef.current && hit?.id === drawCanvasIdRef.current) {
@@ -1242,7 +1249,9 @@ export function PixelCanvas() {
       }
     }
 
-    scheduleRedraw();
+    if (hoverChanged || drawingRef.current || isPanningRef.current || resizingRef.current || draggingCanvasRef.current) {
+      scheduleRedraw();
+    }
   }, [pushHistory, frameAtScreen, getBrushCells, getLineCells, getMirrorCells, resizeHandleAt, screenToCell, scheduleRedraw]);
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {

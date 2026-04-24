@@ -1,6 +1,5 @@
 import { useNavigate } from 'react-router';
 import { useFontStore } from '../../stores/fontStore';
-import { useEditorStore } from '../../stores/editorStore';
 
 export function DashboardView() {
   const navigate = useNavigate();
@@ -9,12 +8,13 @@ export function DashboardView() {
 
   const handleNew = () => {
     initProject('Untitled');
-    navigate(`/project/${project.id}/overview`);
+    // TODO(Stage 5): route to new multi-canvas workspace.
+    navigate(`/project/${project.id}/edit`);
   };
 
   const handleOpen = () => {
-    const glyphId = useEditorStore.getState().selectedGlyphId ?? '0048';
-    navigate(`/project/${project.id}/edit/${glyphId}`);
+    // TODO(Stage 5): route to new multi-canvas workspace.
+    navigate(`/project/${project.id}/edit`);
   };
 
   return (

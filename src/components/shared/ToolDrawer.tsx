@@ -9,6 +9,7 @@ import {
   PENCIL_SVG_PATH,
   BANNER_SVG_PATH,
   DUMBBELL_SVG_PATH,
+  TRIANGLE_SVG_PATH,
 } from './PhysicsPanels';
 
 interface ToolDrawerProps {
@@ -28,6 +29,7 @@ const SHAPE_SVGS: Record<string, { path: string; viewBox: string }> = {
   pencil:   { path: PENCIL_SVG_PATH,   viewBox: '0 0 222 353' },
   banner:   { path: BANNER_SVG_PATH,   viewBox: '0 0 222 227' },
   dumbbell: { path: DUMBBELL_SVG_PATH, viewBox: '0 0 222 302' },
+  triangle: { path: TRIANGLE_SVG_PATH, viewBox: '0 0 222 200' },
 };
 
 function getShapeSvgInfo(shape?: string) {
@@ -66,7 +68,7 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
   // Initialize physics engine — tuned to match the canvas PhysicsPanels feel
   useEffect(() => {
     const engine = Matter.Engine.create({
-      gravity: { x: 0, y: 1, scale: 0.001 },
+      gravity: { x: 0, y: 0, scale: 0 },
     });
     engineRef.current = engine;
 
@@ -261,28 +263,44 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
 
   // Drawer handle drag
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    if (e.buttons !== undefined && e.buttons !== 1) return;
     e.stopPropagation();
     dragStartRef.current = { startX: e.clientX, startOffset: offset };
     setDragging(true);
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }, [offset]);
 
-  const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (!dragStartRef.current) return;
-    const dx = e.clientX - dragStartRef.current.startX;
-    const newOffset = Math.max(0, Math.min(drawerWidth, dragStartRef.current.startOffset + dx));
-    setOffset(newOffset);
-  }, [drawerWidth]);
-
-  const handlePointerUp = useCallback(() => {
-    if (!dragStartRef.current) return;
-    setDragging(false);
-    dragStartRef.current = null;
-  }, []);
+  // Window-level listeners for the drawer handle drag — avoids pointer capture
+  // losing the drag on trackpads.
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e: PointerEvent) => {
+      if (!dragStartRef.current) return;
+      const dx = e.clientX - dragStartRef.current.startX;
+      const newOffset = Math.max(0, Math.min(drawerWidth, dragStartRef.current.startOffset + dx));
+      setOffset(newOffset);
+    };
+    const onUp = () => {
+      setDragging(false);
+      dragStartRef.current = null;
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, [dragging, drawerWidth]);
 
   // Panel drag: starts with physics constraint inside drawer,
   // transitions to direct DOM ghost when cursor crosses drawer edge
   const handlePanelDragStart = useCallback((e: React.PointerEvent, panelId: string) => {
+    // Only start drag on a real left-button press — ignore trackpad hover/force-touch quirks.
+    if (e.button !== 0) return;
+    if (e.buttons !== undefined && e.buttons !== 1) return;
+
     e.stopPropagation();
     e.preventDefault();
 
@@ -319,8 +337,6 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
     panelDragRef.current = { id: panelId, constraint };
     setPhysicsDragging(true);
     wakeRef.current();
-
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }, []);
 
   // Global pointer events for panel drag (physics inside drawer + drag-out)
@@ -455,9 +471,6 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
         <div
           className="tool-drawer-handle"
           onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
         >
           <div className="tool-drawer-handle-grip">
             <span /><span /><span />
@@ -496,6 +509,7 @@ function DrawerPanelShape({ panel }: { panel: PanelDef }) {
     return (
       <div
         className="drawer-panel-inner pill-panel"
+        data-panel-id={panel.id}
         style={{
           width: panel.width,
           height: panel.height,

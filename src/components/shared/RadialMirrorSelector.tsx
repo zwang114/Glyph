@@ -1,5 +1,6 @@
 import { useRef, useCallback, useState, useEffect } from 'react';
 import type { MirrorMode } from '../../types/editor';
+import { useClickSound } from '../../hooks/useClickSound';
 
 interface RadialMirrorSelectorProps {
   value: MirrorMode;
@@ -47,6 +48,9 @@ export function RadialMirrorSelector({ value, onChange }: RadialMirrorSelectorPr
   const dialRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const [dragAngle, setDragAngle] = useState<number | null>(null);
+  const clickFiredRef = useRef(false);
+  const lastHoverRef = useRef<MirrorMode | null>(null);
+  const { playClick } = useClickSound();
 
   const activeOption = OPTIONS.find((o) => o.key === value) ?? OPTIONS[0];
   const displayAngle = dragAngle ?? activeOption.angle;
@@ -63,33 +67,57 @@ export function RadialMirrorSelector({ value, onChange }: RadialMirrorSelectorPr
   const handleDialPointerDown = useCallback((e: React.PointerEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    clickFiredRef.current = false;
+    const angle = getAngleFromEvent(e);
+    lastHoverRef.current = snapToNearest(angle);
     setDragging(true);
-    setDragAngle(getAngleFromEvent(e));
+    setDragAngle(angle);
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }, [getAngleFromEvent]);
 
   const handleDialPointerMove = useCallback((e: React.PointerEvent) => {
     if (!dragging) return;
-    setDragAngle(getAngleFromEvent(e));
-  }, [dragging, getAngleFromEvent]);
+    const angle = getAngleFromEvent(e);
+    const hover = snapToNearest(angle);
+    if (hover !== lastHoverRef.current) {
+      lastHoverRef.current = hover;
+      playClick();
+      clickFiredRef.current = true;
+    }
+    setDragAngle(angle);
+  }, [dragging, getAngleFromEvent, playClick]);
 
   const handleDialPointerUp = useCallback(() => {
     if (!dragging) return;
-    if (dragAngle !== null) onChange(snapToNearest(dragAngle));
+    if (dragAngle !== null) {
+      const next = snapToNearest(dragAngle);
+      if (next !== value && !clickFiredRef.current) {
+        clickFiredRef.current = true;
+        playClick();
+      }
+      onChange(next);
+    }
     setDragging(false);
     setDragAngle(null);
-  }, [dragging, dragAngle, onChange]);
+  }, [dragging, dragAngle, onChange, value, playClick]);
 
   useEffect(() => {
     if (!dragging) return;
     const up = () => {
-      if (dragAngle !== null) onChange(snapToNearest(dragAngle));
+      if (dragAngle !== null) {
+        const next = snapToNearest(dragAngle);
+        if (next !== value && !clickFiredRef.current) {
+          clickFiredRef.current = true;
+          playClick();
+        }
+        onChange(next);
+      }
       setDragging(false);
       setDragAngle(null);
     };
     window.addEventListener('pointerup', up);
     return () => window.removeEventListener('pointerup', up);
-  }, [dragging, dragAngle, onChange]);
+  }, [dragging, dragAngle, onChange, value, playClick]);
 
   return (
     <div
@@ -130,7 +158,7 @@ export function RadialMirrorSelector({ value, onChange }: RadialMirrorSelectorPr
               width: BTN_SIZE,
               height: BTN_SIZE,
             }}
-            onClick={() => onChange(o.key)}
+            onClick={() => { if (o.key !== value) playClick(); onChange(o.key); }}
           >
             {o.label}
           </button>

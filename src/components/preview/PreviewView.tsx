@@ -1,15 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { useFontStore } from '../../stores/fontStore';
-import { useEditorStore } from '../../stores/editorStore';
+import { useCompatGlyphs, useCompatRenderStyle } from '../../stores/canvasCompat';
 import { generatePreviewUrl } from '../../engine/font/compiler';
 
 const WATERFALL_SIZES = [12, 16, 24, 32, 48, 64, 96];
 
 export function PreviewView() {
   const project = useFontStore((s) => s.project);
-  const glyphs = useFontStore((s) => s.glyphs);
-  const pixelShape = useEditorStore((s) => s.pixelShape);
-  const pixelDensity = useEditorStore((s) => s.pixelDensity);
+  const glyphs = useCompatGlyphs();
+  const { shape: pixelShape, density: pixelDensity } = useCompatRenderStyle();
   const [text, setText] = useState('HELLO WORLD');
   const [fontUrl, setFontUrl] = useState<string | null>(null);
   const prevUrlRef = useRef<string | null>(null);

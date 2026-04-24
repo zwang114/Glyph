@@ -1,5 +1,6 @@
 import { useRef, useCallback, useState, useEffect } from 'react';
 import type { PixelShape } from '../../types/editor';
+import { useClickSound } from '../../hooks/useClickSound';
 
 interface RadialShapeSelectorProps {
   value: PixelShape;
@@ -49,6 +50,9 @@ export function RadialShapeSelector({ value, onChange }: RadialShapeSelectorProp
   const dialRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const [dragAngle, setDragAngle] = useState<number | null>(null);
+  const clickFiredRef = useRef(false);
+  const lastHoverRef = useRef<PixelShape | null>(null);
+  const { playClick } = useClickSound();
 
   const activeShape = SHAPES.find((s) => s.key === value) ?? SHAPES[0];
   const displayAngle = dragAngle ?? activeShape.angle;
@@ -67,7 +71,9 @@ export function RadialShapeSelector({ value, onChange }: RadialShapeSelectorProp
   const handleDialPointerDown = useCallback((e: React.PointerEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    clickFiredRef.current = false;
     const angle = getAngleFromEvent(e);
+    lastHoverRef.current = snapToNearest(angle);
     setDragging(true);
     setDragAngle(angle);
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -76,31 +82,47 @@ export function RadialShapeSelector({ value, onChange }: RadialShapeSelectorProp
   const handleDialPointerMove = useCallback((e: React.PointerEvent) => {
     if (!dragging) return;
     const angle = getAngleFromEvent(e);
+    const hover = snapToNearest(angle);
+    if (hover !== lastHoverRef.current) {
+      lastHoverRef.current = hover;
+      playClick();
+      clickFiredRef.current = true;
+    }
     setDragAngle(angle);
-  }, [dragging, getAngleFromEvent]);
+  }, [dragging, getAngleFromEvent, playClick]);
 
   const handleDialPointerUp = useCallback(() => {
     if (!dragging) return;
     if (dragAngle !== null) {
-      onChange(snapToNearest(dragAngle));
+      const next = snapToNearest(dragAngle);
+      if (next !== value && !clickFiredRef.current) {
+        clickFiredRef.current = true;
+        playClick();
+      }
+      onChange(next);
     }
     setDragging(false);
     setDragAngle(null);
-  }, [dragging, dragAngle, onChange]);
+  }, [dragging, dragAngle, onChange, value, playClick]);
 
   // Global pointerup fallback
   useEffect(() => {
     if (!dragging) return;
     const up = () => {
       if (dragAngle !== null) {
-        onChange(snapToNearest(dragAngle));
+        const next = snapToNearest(dragAngle);
+        if (next !== value && !clickFiredRef.current) {
+          clickFiredRef.current = true;
+          playClick();
+        }
+        onChange(next);
       }
       setDragging(false);
       setDragAngle(null);
     };
     window.addEventListener('pointerup', up);
     return () => window.removeEventListener('pointerup', up);
-  }, [dragging, dragAngle, onChange]);
+  }, [dragging, dragAngle, onChange, value, playClick]);
 
   // Decorative lines: 3 lines through center (vertical, +30°, -30°)
   const lineLength = 120;
@@ -155,7 +177,7 @@ export function RadialShapeSelector({ value, onChange }: RadialShapeSelectorProp
               width: BTN_SIZE,
               height: BTN_SIZE,
             }}
-            onClick={() => onChange(s.key)}
+            onClick={() => { if (s.key !== value) playClick(); onChange(s.key); }}
           >
             {s.label}
           </button>

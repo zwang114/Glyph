@@ -1,64 +1,202 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router';
 import { PixelCanvas } from '../../canvas/PixelCanvas';
 import { useEditorStore } from '../../stores/editorStore';
-import { useFontStore } from '../../stores/fontStore';
+import { useCanvasStore } from '../../stores/canvasStore';
 import { useDrawerStore } from '../../stores/drawerStore';
-import { BASIC_LATIN } from '../../utils/charset';
 import { PhysicsPanels } from '../shared/PhysicsPanels';
-import type { PhysicsPanelsHandle, PanelDef } from '../shared/PhysicsPanels';
+import type { PhysicsPanelsHandle } from '../shared/PhysicsPanels';
 import { ToolDrawer } from '../shared/ToolDrawer';
-import { VerticalLever } from '../shared/VerticalLever';
 import { RadialBrushSelector } from '../shared/RadialBrushSelector';
 import { RadialShapeSelector } from '../shared/RadialShapeSelector';
 import { DensitySlider } from '../shared/DensitySlider';
 import { RadialMirrorSelector } from '../shared/RadialMirrorSelector';
-import type { EditorTool, PixelShape } from '../../types/editor';
+import { CharacterInput } from '../shared/CharacterInput';
+import { BPMControl } from '../shared/BPMControl';
+import type { EditorTool, MirrorMode, PixelShape } from '../../types/editor';
 
-export function GlyphEditorView() {
-  const params = useParams<{ id: string; glyphId: string }>();
-  const navigate = useNavigate();
+/**
+ * Workspace editor view.
+ *
+ * Tool panels bind to the SELECTED canvas. If nothing is selected, panels
+ * display the LAST selected canvas's values (so the UI doesn't blank out),
+ * but writes become no-ops until a canvas is re-selected.
+ */
+export function WorkspaceView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ w: 1200, h: 800 });
-  const setSelectedGlyph = useEditorStore((s) => s.setSelectedGlyph);
-  const selectedGlyphId = useEditorStore((s) => s.selectedGlyphId);
+
+  // ── Global editor state (tool choice, view toggles) ─────────────────
   const activeTool = useEditorStore((s) => s.activeTool);
-  const mirrorMode = useEditorStore((s) => s.mirrorMode);
-  const pixelShape = useEditorStore((s) => s.pixelShape);
-  const pixelDensity = useEditorStore((s) => s.pixelDensity);
-  const onionSkinEnabled = useEditorStore((s) => s.onionSkinEnabled);
-  const onionSkinFont = useEditorStore((s) => s.onionSkinFont);
-  const onionSkinSize = useEditorStore((s) => s.onionSkinSize);
   const setTool = useEditorStore((s) => s.setTool);
-  const setMirrorMode = useEditorStore((s) => s.setMirrorMode);
-  const setPixelShape = useEditorStore((s) => s.setPixelShape);
-  const setPixelDensity = useEditorStore((s) => s.setPixelDensity);
-  const setOnionSkinEnabled = useEditorStore((s) => s.setOnionSkinEnabled);
-  const setOnionSkinFont = useEditorStore((s) => s.setOnionSkinFont);
-  const toggleOnionSkinFont = useEditorStore((s) => s.toggleOnionSkinFont);
-  const setOnionSkinSize = useEditorStore((s) => s.setOnionSkinSize);
-  const glyph = useFontStore((s) =>
-    selectedGlyphId ? s.glyphs[selectedGlyphId] : null
+  const toggleGrid = useEditorStore((s) => s.toggleGrid);
+  const toggleMetrics = useEditorStore((s) => s.toggleMetrics);
+
+  // ── Canvas state (selection + per-canvas properties) ────────────────
+  const selectedCanvasId = useCanvasStore((s) => s.selectedCanvasId);
+  const lastSelectedCanvasId = useCanvasStore((s) => s.lastSelectedCanvasId);
+  const targetId = selectedCanvasId ?? lastSelectedCanvasId;
+  const target = useCanvasStore((s) => (targetId ? s.canvases[targetId] : null));
+
+  const setPixelShape = useCanvasStore((s) => s.setPixelShape);
+  const setPixelDensity = useCanvasStore((s) => s.setPixelDensity);
+  const setMirrorMode = useCanvasStore((s) => s.setMirrorMode);
+  const setOnionSkinEnabled = useCanvasStore((s) => s.setOnionSkinEnabled);
+  const setOnionSkinFont = useCanvasStore((s) => s.setOnionSkinFont);
+  const setOnionSkinSize = useCanvasStore((s) => s.setOnionSkinSize);
+  const resizeCanvas = useCanvasStore((s) => s.resizeCanvas);
+  const assignLetter = useCanvasStore((s) => s.assignLetter);
+  const canvases = useCanvasStore((s) => s.canvases);
+
+  // Local display values: fall back to neutral defaults when no canvas exists.
+  // When a canvas IS selected, controls always reflect the store (source of truth).
+  // When nothing is selected, we allow the user to fidget — local "fidget" state
+  // tracks the control positions without committing anywhere. The fidget state
+  // jumps to the newly selected canvas's values whenever selection changes.
+  const storePixelShape = target?.pixelShape ?? 'square';
+  const storePixelDensity = target?.pixelDensity ?? 1.0;
+  const storeMirrorMode = target?.mirrorMode ?? 'none';
+  const storeOnionEnabled = target?.onionSkinEnabled ?? true;
+  const storeOnionFont = target?.onionSkinFont ?? 'sans-serif';
+  const storeOnionSize = target?.onionSkinSize ?? 1.0;
+  const storeLetter = target?.letter ?? null;
+
+  // Fidget state — only used when no canvas is selected. Jumps to target
+  // values whenever targetId changes (so selecting a canvas "jumps" the controls).
+  const [fidgetShape, setFidgetShape] = useState<PixelShape>(storePixelShape);
+  const [fidgetDensity, setFidgetDensity] = useState<number>(storePixelDensity);
+  const [fidgetMirror, setFidgetMirror] = useState<MirrorMode>(storeMirrorMode);
+  const [fidgetLetter, setFidgetLetter] = useState<string | null>(storeLetter);
+  useEffect(() => {
+    setFidgetShape(storePixelShape);
+    setFidgetDensity(storePixelDensity);
+    setFidgetMirror(storeMirrorMode);
+    setFidgetLetter(storeLetter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetId]);
+
+  // Effective values shown in controls:
+  // - If a canvas is selected, always mirror the store (writes go through).
+  // - If nothing is selected, use fidget state for interactivity.
+  const pixelShape = selectedCanvasId ? storePixelShape : fidgetShape;
+  const pixelDensity = selectedCanvasId ? storePixelDensity : fidgetDensity;
+  const mirrorMode = selectedCanvasId ? storeMirrorMode : fidgetMirror;
+  // Onion controls apply universally to all existing canvases. If zero canvases
+  // exist, the writes are silent — so we keep a local fidget copy for display.
+  const [fidgetOnionEnabled, setFidgetOnionEnabled] = useState<boolean>(storeOnionEnabled);
+  const [fidgetOnionFont, setFidgetOnionFont] = useState<'serif' | 'sans-serif'>(storeOnionFont);
+  const [fidgetOnionSize, setFidgetOnionSize] = useState<number>(storeOnionSize);
+  useEffect(() => {
+    setFidgetOnionEnabled(storeOnionEnabled);
+    setFidgetOnionFont(storeOnionFont);
+    setFidgetOnionSize(storeOnionSize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetId]);
+  const hasAnyCanvas = Object.keys(canvases).length > 0;
+  const onionSkinEnabled = hasAnyCanvas ? storeOnionEnabled : fidgetOnionEnabled;
+  const onionSkinFont = hasAnyCanvas ? storeOnionFont : fidgetOnionFont;
+  const onionSkinSize = hasAnyCanvas ? storeOnionSize : fidgetOnionSize;
+  // Displayed letter: prefer what the user most recently typed (fidgetLetter)
+  // so that even rejected-as-duplicate letters remain visible. Falls back to
+  // the canvas's stored letter when no typing has happened this session.
+  const currentLetter = fidgetLetter ?? storeLetter;
+  // Disabled when the displayed letter is not actually committed to the
+  // currently selected canvas — i.e. the typed character didn't "take".
+  // Cases: (a) no canvas is selected, (b) the letter is taken by another canvas.
+  const currentLetterIsDisabled = !!(
+    currentLetter &&
+    (!selectedCanvasId || currentLetter !== storeLetter)
   );
-  const resizeGlyph = useFontStore((s) => s.resizeGlyph);
+  const handleAssignLetter = useCallback(
+    (letter: string | null) => {
+      // Always update the fidget/display state so the typed character is visible.
+      setFidgetLetter(letter);
+      if (!selectedCanvasId) return;
+      // Clearing is always allowed.
+      if (letter === null) {
+        assignLetter(selectedCanvasId, null);
+        return;
+      }
+      // Only commit to the canvas if the letter isn't already taken.
+      // (Parent UI shows the typed letter at 40% opacity if rejected.)
+      const taken = Object.values(useCanvasStore.getState().canvases).some(
+        (c) => c && c.id !== selectedCanvasId && c.letter === letter
+      );
+      if (taken) return;
+      assignLetter(selectedCanvasId, letter);
+    },
+    [selectedCanvasId, assignLetter]
+  );
 
-  const [wInput, setWInput] = useState(glyph?.gridWidth ?? 24);
-  const [hInput, setHInput] = useState(glyph?.gridHeight ?? 32);
+  // ── Panel writers: no-op (fidget only) when nothing is selected ─────
+  const handleShape = useCallback(
+    (shape: PixelShape) => {
+      if (selectedCanvasId) setPixelShape(selectedCanvasId, shape);
+      else setFidgetShape(shape);
+    },
+    [selectedCanvasId, setPixelShape]
+  );
+  const handleDensity = useCallback(
+    (d: number) => {
+      if (selectedCanvasId) setPixelDensity(selectedCanvasId, d);
+      else setFidgetDensity(d);
+    },
+    [selectedCanvasId, setPixelDensity]
+  );
+  const handleMirror = useCallback(
+    (m: MirrorMode) => {
+      if (selectedCanvasId) setMirrorMode(selectedCanvasId, m);
+      else setFidgetMirror(m);
+    },
+    [selectedCanvasId, setMirrorMode]
+  );
+  const handleOnionEnabled = useCallback(
+    (enabled: boolean) => {
+      // Apply universally to all canvases; fidget-only if none exist.
+      const ids = useCanvasStore.getState().canvasOrder;
+      if (ids.length === 0) { setFidgetOnionEnabled(enabled); return; }
+      for (const id of ids) setOnionSkinEnabled(id, enabled);
+    },
+    [setOnionSkinEnabled]
+  );
+  const handleOnionFont = useCallback(
+    (font: 'serif' | 'sans-serif') => {
+      const ids = useCanvasStore.getState().canvasOrder;
+      if (ids.length === 0) { setFidgetOnionFont(font); return; }
+      for (const id of ids) setOnionSkinFont(id, font);
+    },
+    [setOnionSkinFont]
+  );
+  const handleOnionSize = useCallback(
+    (size: number) => {
+      const ids = useCanvasStore.getState().canvasOrder;
+      if (ids.length === 0) { setFidgetOnionSize(size); return; }
+      for (const id of ids) setOnionSkinSize(id, size);
+    },
+    [setOnionSkinSize]
+  );
+  const handleTool = useCallback(
+    (t: EditorTool) => {
+      setTool(t);
+    },
+    [setTool]
+  );
 
+  // ── Canvas W/H inputs ───────────────────────────────────────────────
+  const [wInput, setWInput] = useState(target?.gridWidth ?? 24);
+  const [hInput, setHInput] = useState(target?.gridHeight ?? 32);
   useEffect(() => {
-    if (glyph) { setWInput(glyph.gridWidth); setHInput(glyph.gridHeight); }
-  }, [glyph?.gridWidth, glyph?.gridHeight]);
-
-  const applyCanvasSize = () => {
-    if (selectedGlyphId && (wInput !== glyph?.gridWidth || hInput !== glyph?.gridHeight)) {
-      resizeGlyph(selectedGlyphId, Math.max(4, wInput), Math.max(4, hInput));
+    if (target) {
+      setWInput(target.gridWidth);
+      setHInput(target.gridHeight);
     }
-  };
+  }, [target?.gridWidth, target?.gridHeight]);
+  const applyCanvasSize = useCallback(() => {
+    if (selectedCanvasId && target && (wInput !== target.gridWidth || hInput !== target.gridHeight)) {
+      resizeCanvas(selectedCanvasId, Math.max(4, wInput), Math.max(4, hInput));
+    }
+  }, [selectedCanvasId, target, wInput, hInput, resizeCanvas]);
 
-  useEffect(() => {
-    if (params.glyphId) setSelectedGlyph(params.glyphId);
-  }, [params.glyphId, setSelectedGlyph]);
-
+  // ── Container size tracking for physics panels ──────────────────────
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -69,161 +207,174 @@ export function GlyphEditorView() {
     return () => obs.disconnect();
   }, []);
 
+  // ── Keyboard shortcuts ──────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement).tagName === 'INPUT') return;
-      if (e.key === 'b' || e.key === 'B') setTool('pixel');
-      if (e.key === 'l' || e.key === 'L') setTool('line');
-      if (e.key === 'r' || e.key === 'R') setTool('rect');
-      if (e.key === 'f' || e.key === 'F') setTool('fill');
-      if (e.key === 'e' || e.key === 'E') setTool('eraser');
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-        e.preventDefault(); useFontStore.temporal.getState().undo();
+      const el = e.target as HTMLElement;
+      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable) return;
+
+      const key = e.key.toLowerCase();
+
+      // Undo / Redo
+      if ((e.ctrlKey || e.metaKey) && key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        useCanvasStore.temporal.getState().undo();
+        return;
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
-        e.preventDefault(); useFontStore.temporal.getState().redo();
+      if ((e.ctrlKey || e.metaKey) && key === 'z' && e.shiftKey) {
+        e.preventDefault();
+        useCanvasStore.temporal.getState().redo();
+        return;
       }
+      if ((e.ctrlKey || e.metaKey) && key === 'y') {
+        e.preventDefault();
+        useCanvasStore.temporal.getState().redo();
+        return;
+      }
+
+      // Skip single-key shortcuts when modifiers are held
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      // Tool shortcuts
+      if (key === 'b') { e.preventDefault(); setTool('pixel'); return; }
+      if (key === 'l') { e.preventDefault(); setTool('line'); return; }
+      if (key === 'r') { e.preventDefault(); setTool('rect'); return; }
+      if (key === 'f') { e.preventDefault(); setTool('fill'); return; }
+      if (key === 'e') { e.preventDefault(); setTool('eraser'); return; }
+
+      // View toggles
+      if (key === 'g') { e.preventDefault(); toggleGrid(); return; }
+      if (key === 'm') { e.preventDefault(); toggleMetrics(); return; }
+      if (key === 'o') {
+        e.preventDefault();
+        const ids = useCanvasStore.getState().canvasOrder;
+        const next = !onionSkinEnabled;
+        for (const id of ids) setOnionSkinEnabled(id, next);
+        return;
+      }
+
+      // Brush size: [ shrinks, ] grows (Photoshop-style)
+      if (key === '[') { e.preventDefault(); useEditorStore.getState().stepBrushSize(-1); return; }
+      if (key === ']') { e.preventDefault(); useEditorStore.getState().stepBrushSize(1); return; }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [setTool]);
+  }, [setTool, toggleGrid, toggleMetrics, setOnionSkinEnabled, selectedCanvasId, onionSkinEnabled]);
 
-  const currentIdx = BASIC_LATIN.findIndex(
-    (c) => c.unicode.toString(16).padStart(4, '0') === selectedGlyphId
-  );
-  const handlePrev = () => {
-    if (currentIdx > 0) {
-      const id = BASIC_LATIN[currentIdx - 1].unicode.toString(16).padStart(4, '0');
-      navigate(`/project/${params.id}/edit/${id}`);
-    }
-  };
-  const handleNext = () => {
-    if (currentIdx < BASIC_LATIN.length - 1) {
-      const id = BASIC_LATIN[currentIdx + 1].unicode.toString(16).padStart(4, '0');
-      navigate(`/project/${params.id}/edit/${id}`);
-    }
-  };
-
-  const panelDefs = [
-    {
-      id: 'tools', width: 222, height: 227, color: '#FF6200', title: '', shape: 'banner' as const,
-      children: (
-        <RadialBrushSelector
-          value={activeTool === 'eraser' ? 'pixel' : activeTool}
-          onChange={setTool}
-        />
-      ),
-    },
-    {
-      id: 'shape', width: 222, height: 302, color: '#879900', title: '', shape: 'dumbbell' as const,
-      children: (
-        <>
-          <div className="dumbbell-top">
-            <RadialShapeSelector value={pixelShape} onChange={setPixelShape} />
-          </div>
-          <div className="dumbbell-bottom">
+  // ── Panel definitions (same layout as before, wired to new handlers) ─
+  const panelDefs = useMemo(
+    () => [
+      {
+        id: 'tools', width: 222, height: 227, color: '#FF6200', title: '', shape: 'banner' as const,
+        children: (
+          <RadialBrushSelector
+            value={activeTool === 'eraser' ? 'pixel' : activeTool}
+            onChange={handleTool}
+          />
+        ),
+      },
+      {
+        id: 'shape', width: 222, height: 302, color: '#879900', title: '', shape: 'dumbbell' as const,
+        children: (
+          <>
+            <div className="dumbbell-top">
+              <RadialShapeSelector value={pixelShape} onChange={handleShape} />
+            </div>
+            <div className="dumbbell-bottom">
+              <DensitySlider
+                value={pixelDensity}
+                min={0.15}
+                max={1}
+                onChange={handleDensity}
+              />
+            </div>
+          </>
+        ),
+      },
+      {
+        id: 'mirror', width: 222, height: 264, color: '#aeaeae', title: '', shape: 'pill' as const,
+        children: (
+          <RadialMirrorSelector value={mirrorMode} onChange={handleMirror} />
+        ),
+      },
+      // Canvas control tool temporarily removed — will be replaced with a new approach.
+      {
+        id: 'onion',
+        width: 320,
+        height: 225,
+        color: '#c7a07c',
+        title: '',
+        shape: 'onion' as const,
+        children: (
+          <div className="onion-controls-v2">
+            <div className="onion-toggle-row">
+              <button
+                className={`onion-toggle-btn onion-toggle-btn--off ${!onionSkinEnabled ? 'onion-toggle-btn--selected' : ''}`}
+                onClick={() => handleOnionEnabled(false)}
+              >OFF</button>
+              <button
+                className={`onion-toggle-btn onion-toggle-btn--ghost ${onionSkinEnabled && onionSkinFont === 'serif' ? 'onion-toggle-btn--selected' : ''}`}
+                onClick={() => { handleOnionEnabled(true); handleOnionFont('serif'); }}
+              >SERIF</button>
+              <button
+                className={`onion-toggle-btn onion-toggle-btn--ghost ${onionSkinEnabled && onionSkinFont === 'sans-serif' ? 'onion-toggle-btn--selected' : ''}`}
+                onClick={() => { handleOnionEnabled(true); handleOnionFont('sans-serif'); }}
+              >SANS</button>
+            </div>
             <DensitySlider
-              value={pixelDensity}
-              min={0.15}
-              max={1}
-              onChange={setPixelDensity}
+              value={onionSkinSize}
+              min={0.3}
+              max={2}
+              onChange={handleOnionSize}
             />
           </div>
-        </>
-      ),
-    },
-    {
-      id: 'mirror', width: 222, height: 264, color: '#aeaeae', title: '', shape: 'pill' as const,
-      children: (
-        <RadialMirrorSelector value={mirrorMode} onChange={setMirrorMode} />
-      ),
-    },
-    {
-      id: 'canvas', width: 228, height: 106, color: '#FF92BE', title: '', shape: 'canvas' as const,
-      children: (
-        <>
-          <div className="canvas-dim-group">
-            <span className="canvas-dim-label">W</span>
-            <div className="canvas-input-box">
-              <input
-                type="number"
-                className="canvas-input"
-                value={wInput}
-                min={4}
-                max={128}
-                onChange={(e) => setWInput(Number(e.target.value))}
-                onBlur={applyCanvasSize}
-                onKeyDown={(e) => { if (e.key === 'Enter') applyCanvasSize(); }}
-              />
-            </div>
-            <span className="canvas-dim-unit">PX</span>
+        ),
+      },
+      {
+        id: 'character', width: 162, height: 106, color: '#D2D615', title: '', shape: 'pill' as const,
+        children: (
+          <div className="character-panel-body">
+            <CharacterInput
+              value={currentLetter}
+              isDisabled={currentLetterIsDisabled}
+              onChange={handleAssignLetter}
+            />
           </div>
-          <div className="canvas-dim-group">
-            <span className="canvas-dim-label">H</span>
-            <div className="canvas-input-box">
-              <input
-                type="number"
-                className="canvas-input"
-                value={hInput}
-                min={4}
-                max={128}
-                onChange={(e) => setHInput(Number(e.target.value))}
-                onBlur={applyCanvasSize}
-                onKeyDown={(e) => { if (e.key === 'Enter') applyCanvasSize(); }}
-              />
-            </div>
-            <span className="canvas-dim-unit">PX</span>
-          </div>
-        </>
-      ),
-    },
-    {
-      id: 'onion',
-      width: 320,
-      height: 225,
-      color: '#c7a07c',
-      title: '',
-      shape: 'onion' as const,
-      children: (
-        <div className="onion-controls-v2">
-          {/* 3-way toggle: OFF / SERIF / SANS */}
-          <div className="onion-toggle-row">
-            <button
-              className={`onion-toggle-btn onion-toggle-btn--off ${!onionSkinEnabled ? 'onion-toggle-btn--selected' : ''}`}
-              onClick={() => setOnionSkinEnabled(false)}
-            >OFF</button>
-            <button
-              className={`onion-toggle-btn onion-toggle-btn--ghost ${onionSkinEnabled && onionSkinFont === 'serif' ? 'onion-toggle-btn--selected' : ''}`}
-              onClick={() => { setOnionSkinEnabled(true); setOnionSkinFont('serif'); }}
-            >SERIF</button>
-            <button
-              className={`onion-toggle-btn onion-toggle-btn--ghost ${onionSkinEnabled && onionSkinFont === 'sans-serif' ? 'onion-toggle-btn--selected' : ''}`}
-              onClick={() => { setOnionSkinEnabled(true); setOnionSkinFont('sans-serif'); }}
-            >SANS</button>
-          </div>
-          {/* Size slider (label removed per Figma redesign — value shown inline on thumb) */}
-          <DensitySlider
-            value={onionSkinSize}
-            min={0.3}
-            max={2}
-            onChange={setOnionSkinSize}
-          />
+        ),
+      },
+      {
+        id: 'bpm', width: 228, height: 106, color: '#FF92BE', title: '', shape: 'canvas' as const,
+        children: <BPMControl />,
+      },
+    ],
+    [
+      activeTool,
+      handleTool,
+      pixelShape,
+      handleShape,
+      pixelDensity,
+      handleDensity,
+      mirrorMode,
+      handleMirror,
+      onionSkinEnabled,
+      onionSkinFont,
+      onionSkinSize,
+      handleOnionEnabled,
+      handleOnionFont,
+      handleOnionSize,
+      currentLetter,
+      currentLetterIsDisabled,
+      handleAssignLetter,
+    ]
+  );
 
-        </div>
-      ),
-    },
-  ];
-
-  // Drawer state
+  // ── Drawer state (unchanged) ────────────────────────────────────────
   const physicsRef = useRef<PhysicsPanelsHandle>(null);
   const storedPanelIds = useDrawerStore((s) => s.storedPanelIds);
   const storePanel = useDrawerStore((s) => s.storePanel);
   const restorePanel = useDrawerStore((s) => s.restorePanel);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const drawerWidth = Math.round(containerSize.w * (2 / 3));
-
-  // Split panels: active (on canvas) vs stored (in drawer)
   const activePanels = useMemo(
     () => panelDefs.filter((p) => !storedPanelIds.includes(p.id)),
     [panelDefs, storedPanelIds]
@@ -233,29 +384,23 @@ export function GlyphEditorView() {
     [panelDefs, storedPanelIds]
   );
 
-  // Track where panels were dropped into the drawer
   const dropPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
-  // When a panel is dropped inside the drawer from the canvas
   const handlePanelDroppedInDrawer = useCallback((panelId: string, x: number, y: number) => {
-    // Store drop position so the drawer can place the body there
     dropPositionsRef.current.set(panelId, { x, y });
     storePanel(panelId);
   }, [storePanel]);
 
-  // When a panel is dragged out of the drawer back to the canvas
   const handlePanelDraggedOut = useCallback((panelId: string, x: number, y: number) => {
     const panel = panelDefs.find((p) => p.id === panelId);
     if (!panel) return;
     restorePanel(panelId);
-    // rAF ensures React has re-rendered with the panel in activePanels
     requestAnimationFrame(() => {
       physicsRef.current?.addPanelBody(panel, x, y);
     });
   }, [panelDefs, restorePanel]);
 
   const [drawerEdge, setDrawerEdge] = useState(0);
-
   const handleDrawerOpenChange = useCallback((isOpen: boolean, rightEdge: number) => {
     setDrawerOpen(isOpen);
     setDrawerEdge(rightEdge);
@@ -281,11 +426,10 @@ export function GlyphEditorView() {
         onOpenChange={handleDrawerOpenChange}
         dropPositions={dropPositionsRef.current}
       />
-      <div className="floating-nav">
-        <button className="fp-btn fp-btn--dark" onClick={handlePrev} disabled={currentIdx <= 0}>PREV</button>
-        <span className="floating-nav-char">{glyph ? String.fromCharCode(glyph.unicode) : ''}</span>
-        <button className="fp-btn fp-btn--dark" onClick={handleNext} disabled={currentIdx >= BASIC_LATIN.length - 1}>NEXT</button>
-      </div>
     </div>
   );
 }
+
+// Backwards-compatible named export so the existing router import keeps working
+// until Stage 5 rewires routing.
+export { WorkspaceView as GlyphEditorView };

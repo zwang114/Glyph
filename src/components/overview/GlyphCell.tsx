@@ -54,7 +54,11 @@ export function GlyphCell({ glyph, charDef, onClick }: GlyphCellProps) {
   return (
     <div
       className={`glyph-cell ${hasPixels ? 'glyph-cell--filled' : ''}`}
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
+      aria-label={`${charDef.name} (${charDef.char})`}
     >
       {hasPixels ? (
         <canvas ref={canvasRef} className="glyph-cell-preview" />

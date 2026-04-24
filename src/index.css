@@ -47,6 +47,23 @@
   padding: 0;
 }
 
+:focus-visible {
+  outline: 2px solid #FF6200;
+  outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 body {
   margin: 0;
   overflow: hidden;
@@ -433,6 +450,7 @@ body {
   position: absolute;
   /* stem 28px + bulb pt 40px = 68px */
   top: 68px;
+  /* bulb inset 16px + inner pad 16px = 32px */
   left: 32px;
   right: 32px;
   /* connector 17px + bulb pb 40px = 57px */
@@ -466,7 +484,7 @@ body {
 
 .onion-toggle-btn {
   flex: 1;
-  height: 40px;
+  height: 38px;
   border: 1px solid #000;
   border-radius: 1000px;
   color: #000;
@@ -542,12 +560,123 @@ body {
   background: #c7a07c;
 }
 
+/* Density slider inside shape/dumbbell — green thumb to match body */
+.dumbbell-bottom .density-slider-thumb {
+  background: #879900;
+}
+
 /* Canvas Size panel (notched 3-section pink bar — horizontal layout) */
 .canvas-panel {
   background: transparent !important;
   border-radius: 0 !important;
   overflow: visible;
   font-family: 'Noto Sans', sans-serif;
+}
+
+/* ─── Character tool (horizontal pill panel) ──────────────────── */
+/* Character pill is 162×106 (wider than tall). Override the default pill-body
+   insets (tuned for the mirror tool) so the 38px input can center properly. */
+.pill-panel[data-panel-id="character"] .pill-body {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 0;
+}
+.pill-panel[data-panel-id="character"] .pill-header {
+  display: none;
+}
+.character-panel-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+.character-input-box {
+  width: 82px;
+  height: 38px;
+  background: #000;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 24px;
+  box-sizing: border-box;
+}
+.character-input {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  text-align: center;
+  color: #D2D615;
+  font-family: 'Noto Sans', sans-serif;
+  font-size: 16px;
+  letter-spacing: 0.5px;
+  caret-color: #D2D615;
+  padding: 0;
+}
+.character-input.is-disabled {
+  /* Letter is shown but not actually assigned (duplicate or no canvas selected) */
+  opacity: 0.4;
+}
+
+/* Triangle panel styles kept for backward compatibility (no longer used by
+   the Character tool, but the shape type still exists on PanelDef). */
+.triangle-panel {
+  background: transparent !important;
+  border-radius: 0 !important;
+  overflow: visible;
+  font-family: 'Noto Sans', sans-serif;
+}
+.triangle-body {
+  position: absolute;
+  left: 50%;
+  bottom: 33px;
+  transform: translateX(-50%);
+  z-index: 2;
+  pointer-events: auto;
+}
+.letter-wheel {
+  width: 38px;
+  height: 103px;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+.letter-wheel:active { cursor: grabbing; }
+.letter-wheel-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  /* Start the first item centered in the 103px-tall viewport.
+     Center y = 51.5px, item height 22 → top = 51.5 - 11 = 40.5 */
+  top: 40.5px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+  will-change: transform;
+}
+.letter-wheel-item {
+  height: 22px;
+  line-height: 22px;
+  width: 22px;
+  text-align: center;
+  color: #CE503E;
+  font-family: 'Noto Sans', sans-serif;
+  font-size: 16px;
+  letter-spacing: 0.5px;
+  pointer-events: none;
+}
+.letter-wheel-item.is-disabled {
+  color: rgba(212, 133, 122, 0.4);
 }
 
 /* Drag handle — positioned in the left section (0–103px, center at ~51px) */
@@ -585,7 +714,9 @@ body {
   align-items: stretch;
 }
 
-/* Each W/H dimension group fills one section. Section 1: 0-106. Connector: 106-122 (skip). Section 2: 122-228. */
+/* Each W/H dimension group fills one section.
+   Section 1 (W): 0-106. Connector: 106-122 (16). Section 2 (H): 122-228.
+   Connector: 228-244 (16). Section 3 (Density): 244-456 (212). */
 .canvas-dim-group {
   display: flex;
   flex-direction: column;
@@ -596,7 +727,6 @@ body {
   width: 106px;
 }
 
-/* Skip 16px connector gap between the two groups */
 .canvas-dim-group:first-child {
   margin-right: 16px;
 }
@@ -1012,7 +1142,7 @@ body {
 
 .density-slider-track {
   position: relative;
-  height: 16px;
+  height: 22px;
   width: 100%;
 }
 
@@ -1023,12 +1153,12 @@ body {
   align-items: center;
   gap: 8px;
   width: var(--thumb-w);
+  height: 22px;
   padding: 4px 4px 4px 8px;
   box-sizing: border-box;
-  background: #879900;
+  background: #c7a07c;
   border-radius: 4px;
-  top: 50%;
-  transform: translateY(-50%);
+  top: 0;
   pointer-events: none;
   font-family: 'Noto Sans', sans-serif;
   font-weight: 400;
@@ -1466,7 +1596,7 @@ body {
   padding: 0 var(--spacing-md);
   gap: var(--spacing-lg);
   flex-shrink: 0;
-  background: #F9F1E9;
+  background: #E9D9CB;
   color: #1a1a1a;
 }
 
@@ -1533,7 +1663,7 @@ body {
   padding: 0 var(--spacing-md);
   gap: var(--spacing-lg);
   flex-shrink: 0;
-  background: #F9F1E9;
+  background: #E9D9CB;
   color: #1a1a1a;
 }
 
@@ -2022,4 +2152,248 @@ body {
   pointer-events: none;
   opacity: 0.85;
   filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.5));
+}
+
+/* ── Shortcut Help Overlay ── */
+.shortcut-overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: shortcut-fade-in 0.15s ease-out;
+}
+
+@keyframes shortcut-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.shortcut-overlay {
+  background: #2a2a2a;
+  color: #e0e0e0;
+  border-radius: 12px;
+  width: 420px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  font-family: inherit;
+}
+
+.shortcut-overlay-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 12px;
+  border-bottom: 1px solid #3a3a3a;
+}
+
+.shortcut-overlay-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.shortcut-overlay-close {
+  background: #3a3a3a;
+  border: none;
+  color: #aaa;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.shortcut-overlay-close:hover {
+  background: #4a4a4a;
+  color: #fff;
+}
+
+.shortcut-overlay-body {
+  padding: 16px 24px;
+}
+
+.shortcut-group {
+  margin-bottom: 16px;
+}
+
+.shortcut-group:last-child {
+  margin-bottom: 0;
+}
+
+.shortcut-group-title {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #888;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 0;
+}
+
+.shortcut-label {
+  font-size: 13px;
+  color: #ccc;
+}
+
+.shortcut-key {
+  background: #3a3a3a;
+  border: 1px solid #4a4a4a;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-family: inherit;
+  color: #fff;
+  min-width: 28px;
+  text-align: center;
+}
+
+.shortcut-overlay-footer {
+  padding: 12px 24px;
+  border-top: 1px solid #3a3a3a;
+  font-size: 12px;
+  color: #777;
+  text-align: center;
+}
+
+.shortcut-overlay-footer kbd {
+  background: #3a3a3a;
+  border: 1px solid #4a4a4a;
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 11px;
+  color: #aaa;
+}
+
+/* ── BPM + transport control (Figma 77:344) ──────────────────────── */
+/* The panel uses the 'canvas' shape: two 106×106 sections joined by a
+   16px notched connector. Each card stacks two controls vertically. */
+.bpm-panel-body {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: stretch;
+}
+
+.bpm-section {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  width: 106px;
+  box-sizing: border-box;
+}
+
+.bpm-section--left {
+  margin-right: 16px;
+}
+
+/* Black rounded rect holding "120 BPM" — row, centered, 10px gap */
+.bpm-input-box {
+  background: #000;
+  border-radius: 8px;
+  padding: 8px 24px;
+  height: 38px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-sizing: border-box;
+}
+
+.bpm-input {
+  width: 32px;
+  background: transparent;
+  color: #FF92BE;
+  border: none;
+  font-family: 'Noto Sans', sans-serif;
+  font-weight: 400;
+  font-size: 16px;
+  letter-spacing: 0.5px;
+  text-align: right;
+  outline: none;
+  padding: 0;
+  white-space: nowrap;
+}
+
+.bpm-input::-webkit-inner-spin-button,
+.bpm-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.bpm-input-label {
+  font-family: 'Noto Sans', sans-serif;
+  font-weight: 400;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  color: #FF92BE;
+  pointer-events: none;
+}
+
+/* Pill buttons (PLAY/PAUSE, LOOP, RESTART) — match onion-toggle-btn pattern.
+   Slightly shorter than the BPM input so two pills + the 38px input fit
+   cleanly inside a 106px card with 12px padding. */
+.bpm-pill-btn {
+  height: 32px;
+  width: 100%;
+  border-radius: 1000px;
+  font-family: 'Noto Sans', sans-serif;
+  font-weight: 400;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.05s ease;
+  box-sizing: border-box;
+}
+
+.bpm-pill-btn:active {
+  transform: scale(0.97);
+}
+
+/* Filled (active style) — used by PLAY/PAUSE */
+.bpm-pill-btn--filled {
+  background: #000;
+  color: #FF92BE;
+  border: 1px solid #000;
+}
+
+.bpm-pill-btn--filled:hover {
+  opacity: 0.9;
+}
+
+/* Outlined (inactive style) — used by LOOP & RESTART at rest */
+.bpm-pill-btn--outline {
+  background: transparent;
+  color: #000;
+  border: 1px solid #000;
+}
+
+.bpm-pill-btn--outline:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+/* Toggled-on state for LOOP: flips to filled-black like PLAY */
+.bpm-pill-btn--outline.bpm-pill-btn--active {
+  background: #000;
+  color: #FF92BE;
 }

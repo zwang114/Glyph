@@ -1,12 +1,33 @@
-import { NavLink, Outlet, useParams } from 'react-router';
+import { useRef, useEffect } from 'react';
+import { NavLink, Outlet, useParams, useMatch } from 'react-router';
 import { useFontStore } from '../../stores/fontStore';
 import { useEditorStore } from '../../stores/editorStore';
+import { useCanvasStore } from '../../stores/canvasStore';
+import { ShortcutHelpOverlay } from '../shared/ShortcutHelpOverlay';
+import { useShortcutHelp } from '../../hooks/useShortcutHelp';
+
+const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
+const mod = isMac ? '⌘' : 'Ctrl+';
+const shift = isMac ? '⇧' : 'Shift+';
+const alt = isMac ? '⌥' : 'Alt+';
 
 export function AppShell() {
   const params = useParams();
   const project = useFontStore((s) => s.project);
-  const viewport = useEditorStore((s) => s.viewport);
+  const viewport = useCanvasStore((s) => s.viewport);
   const base = `/project/${params.id}`;
+  const isEditor = useMatch('/project/:id/edit');
+  const { open: helpOpen, setOpen: setHelpOpen } = useShortcutHelp();
+
+  const activeTool = useEditorStore((s) => s.activeTool);
+  const liveRef = useRef<HTMLDivElement>(null);
+  const prevToolRef = useRef(activeTool);
+  useEffect(() => {
+    if (activeTool !== prevToolRef.current) {
+      prevToolRef.current = activeTool;
+      if (liveRef.current) liveRef.current.textContent = `${activeTool} tool selected`;
+    }
+  }, [activeTool]);
 
   return (
     <div className="app-shell">
@@ -16,10 +37,7 @@ export function AppShell() {
         </NavLink>
 
         <nav className="toolbar-nav">
-          <NavLink to={`${base}/overview`} className="toolbar-link">
-            Overview
-          </NavLink>
-          <NavLink to={`${base}/edit/0048`} className="toolbar-link">
+          <NavLink to={`${base}/edit`} className="toolbar-link">
             Edit
           </NavLink>
           <NavLink to={`${base}/spacing`} className="toolbar-link">
@@ -47,9 +65,13 @@ export function AppShell() {
           Zoom {Math.round((viewport.zoom || 1) * 100)}%
         </span>
         <span className="statusbar-hint">
-          Ctrl+Z undo &middot; Ctrl+Shift+Z redo &middot; E erase &middot; Scroll to zoom &middot; Alt+drag to pan
+          {isEditor
+            ? `${mod}Z undo · ${mod}${shift}Z redo · B brush · L line · R rect · F fill · E erase · G grid · M metrics · O onion · Scroll zoom · Space+drag pan · ${alt}+drag tab duplicate`
+            : `${mod}Z undo · ${mod}${shift}Z redo`}
         </span>
       </footer>
+      <ShortcutHelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <div ref={liveRef} aria-live="polite" aria-atomic="true" className="sr-only" />
     </div>
   );
 }

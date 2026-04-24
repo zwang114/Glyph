@@ -212,7 +212,7 @@ export const useFontStore = create<FontStore>()(
       },
     }),
     {
-      limit: 200,
+      limit: 15,
       partialize: (state) => ({
         glyphs: state.glyphs,
         kernPairs: state.kernPairs,

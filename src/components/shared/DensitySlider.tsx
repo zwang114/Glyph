@@ -1,4 +1,5 @@
 import { useRef, useCallback, useState, useEffect } from 'react';
+import { useClickSound } from '../../hooks/useClickSound';
 
 interface DensitySliderProps {
   value: number;
@@ -10,7 +11,10 @@ interface DensitySliderProps {
 export function DensitySlider({ value, min, max, onChange }: DensitySliderProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
+  const lastTickRef = useRef(-1);
+  const lastClickTimeRef = useRef(0);
   const [, forceUpdate] = useState(0);
+  const { playClick } = useClickSound();
 
   const fraction = (value - min) / (max - min);
 
@@ -19,25 +23,47 @@ export function DensitySlider({ value, min, max, onChange }: DensitySliderProps)
     if (!el) return min;
     const rect = el.getBoundingClientRect();
     const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
-    return min + (x / rect.width) * (max - min);
+    const raw = min + (x / rect.width) * (max - min);
+    // Snap to 1% increments of the (min..max) range
+    const step = (max - min) / 100;
+    return Math.round(raw / step) * step;
   }, [min, max]);
+
+  const playClickThrottled = useCallback(() => {
+    const now = performance.now();
+    if (now - lastClickTimeRef.current >= 80) {
+      lastClickTimeRef.current = now;
+      playClick();
+    }
+  }, [playClick]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.stopPropagation();
     e.preventDefault();
     draggingRef.current = true;
+    lastClickTimeRef.current = 0;
+    const v = valueFromX(e.clientX);
+    lastTickRef.current = Math.floor(((v - min) / (max - min)) * 100);
+    playClickThrottled();
     forceUpdate((n) => n + 1);
-    onChange(valueFromX(e.clientX));
+    onChange(v);
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-  }, [valueFromX, onChange]);
+  }, [valueFromX, onChange, min, max, playClickThrottled]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!draggingRef.current) return;
-    onChange(valueFromX(e.clientX));
-  }, [valueFromX, onChange]);
+    const v = valueFromX(e.clientX);
+    const tick = Math.floor(((v - min) / (max - min)) * 100);
+    if (tick !== lastTickRef.current) {
+      lastTickRef.current = tick;
+      playClickThrottled();
+    }
+    onChange(v);
+  }, [valueFromX, onChange, min, max, playClickThrottled]);
 
   const handlePointerUp = useCallback(() => {
     draggingRef.current = false;
+    lastTickRef.current = -1;
   }, []);
 
   useEffect(() => {

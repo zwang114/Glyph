@@ -1,5 +1,6 @@
 import { useRef, useCallback, useState, useEffect } from 'react';
 import type { EditorTool } from '../../types/editor';
+import { useClickSound } from '../../hooks/useClickSound';
 
 interface RadialBrushSelectorProps {
   value: EditorTool;
@@ -8,11 +9,11 @@ interface RadialBrushSelectorProps {
 
 // 4 tools arranged in a 2x2 grid around a central dial
 // Positions within a 190x120 selector area
-const TOOLS: { key: EditorTool; label: string; left: number; top: number; angle: number }[] = [
-  { key: 'pixel', label: 'PX',  left: 0,   top: 0,  angle: -135 },  // top-left
-  { key: 'rect',  label: 'REC', left: 150, top: 0,  angle: -45 },   // top-right
-  { key: 'line',  label: 'LI',  left: 0,   top: 80, angle: 135 },   // bottom-left
-  { key: 'fill',  label: 'FIL', left: 150, top: 80, angle: 45 },    // bottom-right
+const TOOLS: { key: EditorTool; label: string; ariaLabel: string; shortcut: string; left: number; top: number; angle: number }[] = [
+  { key: 'pixel', label: 'PX',  ariaLabel: 'Pixel brush tool', shortcut: 'b', left: 0,   top: 0,  angle: -135 },
+  { key: 'rect',  label: 'REC', ariaLabel: 'Rectangle tool',   shortcut: 'r', left: 150, top: 0,  angle: -45 },
+  { key: 'line',  label: 'LI',  ariaLabel: 'Line tool',        shortcut: 'l', left: 0,   top: 80, angle: 135 },
+  { key: 'fill',  label: 'FIL', ariaLabel: 'Fill tool',        shortcut: 'f', left: 150, top: 80, angle: 45 },
 ];
 
 const SELECTOR_W = 190;
@@ -48,6 +49,9 @@ export function RadialBrushSelector({ value, onChange }: RadialBrushSelectorProp
   const dialRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const [dragAngle, setDragAngle] = useState<number | null>(null);
+  const clickFiredRef = useRef(false);
+  const lastHoverRef = useRef<EditorTool | null>(null);
+  const { playClick } = useClickSound();
 
   const activeTool = TOOLS.find((t) => t.key === value) ?? TOOLS[0];
   const displayAngle = dragAngle ?? activeTool.angle;
@@ -66,7 +70,9 @@ export function RadialBrushSelector({ value, onChange }: RadialBrushSelectorProp
   const handleDialPointerDown = useCallback((e: React.PointerEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    clickFiredRef.current = false;
     const angle = getAngleFromEvent(e);
+    lastHoverRef.current = snapToNearest(angle);
     setDragging(true);
     setDragAngle(angle);
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -75,31 +81,47 @@ export function RadialBrushSelector({ value, onChange }: RadialBrushSelectorProp
   const handleDialPointerMove = useCallback((e: React.PointerEvent) => {
     if (!dragging) return;
     const angle = getAngleFromEvent(e);
+    const hover = snapToNearest(angle);
+    if (hover !== lastHoverRef.current) {
+      lastHoverRef.current = hover;
+      playClick();
+      clickFiredRef.current = true;
+    }
     setDragAngle(angle);
-  }, [dragging, getAngleFromEvent]);
+  }, [dragging, getAngleFromEvent, playClick]);
 
   const handleDialPointerUp = useCallback(() => {
     if (!dragging) return;
     if (dragAngle !== null) {
-      onChange(snapToNearest(dragAngle));
+      const next = snapToNearest(dragAngle);
+      if (next !== value && !clickFiredRef.current) {
+        clickFiredRef.current = true;
+        playClick();
+      }
+      onChange(next);
     }
     setDragging(false);
     setDragAngle(null);
-  }, [dragging, dragAngle, onChange]);
+  }, [dragging, dragAngle, onChange, value, playClick]);
 
   // Global pointerup fallback
   useEffect(() => {
     if (!dragging) return;
     const up = () => {
       if (dragAngle !== null) {
-        onChange(snapToNearest(dragAngle));
+        const next = snapToNearest(dragAngle);
+        if (next !== value && !clickFiredRef.current) {
+          clickFiredRef.current = true;
+          playClick();
+        }
+        onChange(next);
       }
       setDragging(false);
       setDragAngle(null);
     };
     window.addEventListener('pointerup', up);
     return () => window.removeEventListener('pointerup', up);
-  }, [dragging, dragAngle, onChange]);
+  }, [dragging, dragAngle, onChange, value, playClick]);
 
   // Decorative dotted lines: X pattern extending to button corners
   // Pattern area: 150x80, centered in the 190x120 selector
@@ -148,7 +170,11 @@ export function RadialBrushSelector({ value, onChange }: RadialBrushSelectorProp
               height: BTN_SIZE,
               '--active-color': '#FF6200',
             } as React.CSSProperties}
-            onClick={() => onChange(t.key)}
+            onClick={() => { if (t.key !== value) playClick(); onChange(t.key); }}
+            aria-label={`${t.ariaLabel} (${t.shortcut.toUpperCase()})`}
+            aria-keyshortcuts={t.shortcut}
+            aria-pressed={isActive}
+            title={`${t.ariaLabel} (${t.shortcut.toUpperCase()})`}
           >
             {t.label}
           </button>

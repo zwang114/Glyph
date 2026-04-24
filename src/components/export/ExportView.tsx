@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import { useFontStore } from '../../stores/fontStore';
-import { useEditorStore } from '../../stores/editorStore';
+import { useCompatGlyphs, useCompatRenderStyle } from '../../stores/canvasCompat';
 import { downloadFont } from '../../engine/font/compiler';
 
 export function ExportView() {
   const project = useFontStore((s) => s.project);
-  const glyphs = useFontStore((s) => s.glyphs);
-  const pixelShape = useEditorStore((s) => s.pixelShape);
-  const pixelDensity = useEditorStore((s) => s.pixelDensity);
+  const glyphs = useCompatGlyphs();
+  const { shape: pixelShape, density: pixelDensity } = useCompatRenderStyle();
   const [exported, setExported] = useState(false);
 
   const glyphCount = Object.values(glyphs).filter((g) =>

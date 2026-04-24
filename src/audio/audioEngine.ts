@@ -240,6 +240,10 @@ export function playGlyph(
     // Track which columns we've already scheduled in the current pass so
     // the tick doesn't schedule the same column twice.
     let lastScheduledCol = firstCol - 1;
+    // Throttle playhead position writes to ~30fps so the canvas redraw
+    // subscription doesn't fire every frame. 60fps redraws saturate the
+    // main thread in production builds when combined with mouse input.
+    let lastPlayheadUpdateAt = 0;
 
     const scheduleColumn = (col: number) => {
       // Re-read the current frame every time so live edits are honored.
@@ -328,7 +332,11 @@ export function playGlyph(
         scheduleColumn(lastScheduledCol);
       }
 
-      onPlayheadUpdate?.(playheadCol);
+      const nowMs = performance.now();
+      if (nowMs - lastPlayheadUpdateAt >= 33) {
+        lastPlayheadUpdateAt = nowMs;
+        onPlayheadUpdate?.(playheadCol);
+      }
 
       const reachedEnd = colFloat >= gridWidth;
       if (!reachedEnd) {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useCanvasStore } from './canvasStore';
 import { useEditorStore } from './editorStore';
+import { getDefaultProjectSnapshot } from './defaultProject';
 import type { CanvasFrame, WorkspaceViewport } from '../types/canvas';
 import type { EditorTool } from '../types/editor';
 
@@ -155,14 +156,15 @@ export function useProjectPersistence(projectId: string | undefined): {
         brushSize: saved.editor.brushSize,
       });
     } else {
-      // No saved data for this project — reset to a clean workspace so
-      // we don't bleed state from a previously-open project.
+      // No saved data for this project — preload the default snapshot so
+      // new users see crafted content instead of an empty workspace.
+      const defaults = getDefaultProjectSnapshot();
       useCanvasStore.setState({
-        canvases: {},
-        canvasOrder: [],
+        canvases: defaults.canvases,
+        canvasOrder: defaults.canvasOrder,
         selectedCanvasId: null,
-        lastSelectedCanvasId: null,
-        viewport: { x: 0, y: 0, zoom: 1 },
+        lastSelectedCanvasId: defaults.canvasOrder[0] ?? null,
+        viewport: defaults.viewport,
       });
     }
     // Undo history is not persisted — clear it so the hydration itself

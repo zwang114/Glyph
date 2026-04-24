@@ -8,10 +8,8 @@ interface AudioState {
   bpm: number;
   /** When true, playback loops back to column 0 after the last column. */
   isLooping: boolean;
-  /** Which canvas is being played. Null when not playing. */
-  playbackCanvasId: string | null;
-  /** Fractional column position (0 → gridWidth) of the playhead. */
-  playheadCol: number;
+  /** Fractional column position per canvas (0 → gridWidth). */
+  playheadCols: Record<string, number>;
 }
 
 interface AudioActions {
@@ -20,19 +18,13 @@ interface AudioActions {
   setBpm: (bpm: number) => void;
   toggleLooping: () => void;
   setLooping: (v: boolean) => void;
-  /** Start (or resume) playback from the current playhead column. */
   startPlayback: () => void;
-  /** Pause — stop scheduled notes but keep the playhead in place. */
   pausePlayback: () => void;
-  /**
-   * Stop playback entirely and clear the playhead. This is the "hard stop"
-   * used by external callers that don't care about resume state. The Restart
-   * button wraps this plus a playhead reset.
-   */
   stopPlayback: () => void;
-  /** Stop + rewind playhead to column 0. */
   resetPlayback: () => void;
-  setPlayheadCol: (col: number) => void;
+  setPlayheadCol: (canvasId: string, col: number) => void;
+  /** Legacy single-canvas accessor — returns the first active playhead. */
+  getPlayheadCol: (canvasId: string) => number;
 }
 
 export const useAudioStore = create<AudioState & AudioActions>()((set, get) => ({
@@ -40,80 +32,93 @@ export const useAudioStore = create<AudioState & AudioActions>()((set, get) => (
   muted: false,
   bpm: 120,
   isLooping: false,
-  playbackCanvasId: null,
-  playheadCol: 0,
+  playheadCols: {},
 
   setIsPlaying: (v) => set({ isPlaying: v }),
   toggleMuted: () => set((s) => ({ muted: !s.muted })),
   setBpm: (bpm) => set({ bpm: Math.max(20, Math.min(300, bpm)) }),
+  setPlayheadCol: (canvasId, col) =>
+    set((s) => ({ playheadCols: { ...s.playheadCols, [canvasId]: col } })),
+  getPlayheadCol: (canvasId) => get().playheadCols[canvasId] ?? 0,
+
   toggleLooping: () => {
     const next = !get().isLooping;
     set({ isLooping: next });
-    // If playback is currently running, restart from the current column so
-    // the new loop flag takes effect on the engine.
     if (get().isPlaying) {
-      const { playbackCanvasId, playheadCol, bpm } = get();
-      const canvasState = useCanvasStore.getState();
-      const id = playbackCanvasId;
-      if (!id) return;
-      const frame = canvasState.canvases[id];
-      if (!frame) return;
-      playGlyph(
-        id,
-        bpm,
-        Math.floor(playheadCol),
-        next,
-        (col) => set({ playheadCol: col }),
-        () => set({ isPlaying: false, playbackCanvasId: null, playheadCol: 0 }),
-      );
+      // Restart all active canvases with the new loop flag.
+      get().startPlayback();
     }
   },
   setLooping: (v) => set({ isLooping: v }),
-  setPlayheadCol: (col) => set({ playheadCol: col }),
 
   startPlayback: () => {
-    const { muted, bpm, playheadCol, isLooping } = get();
+    const { muted, bpm, isLooping, playheadCols } = get();
     if (muted) return;
     const canvasState = useCanvasStore.getState();
-    const id = canvasState.selectedCanvasId ?? canvasState.lastSelectedCanvasId;
-    if (!id) return;
-    const frame = canvasState.canvases[id];
-    if (!frame) return;
-    // Resume from the current playhead if it's mid-sequence, else start fresh.
-    const startCol =
-      playheadCol > 0 && playheadCol < frame.gridWidth
-        ? Math.floor(playheadCol)
-        : 0;
-    set({
-      isPlaying: true,
-      playbackCanvasId: id,
-      playheadCol: startCol,
+    const ids = canvasState.canvasOrder.filter(id => canvasState.canvases[id]);
+    if (ids.length === 0) return;
+
+    // Stop any current playback cleanly before relaunching.
+    stopPlayback();
+
+    // All canvases share the same audio-clock origin so they're phase-locked.
+    // We compute it here (in the store) and pass it down to each playGlyph call.
+    // AudioContext is accessed via the engine's exported helper — we create it
+    // lazily by calling playGlyph with a tiny dummy, but instead just read the
+    // current time directly through the Web Audio API.
+    // Simpler: let the first playGlyph call establish the time, then reuse it.
+    // We do this by grabbing ctx from a fresh AudioContext reference here.
+    let sharedNow: number | undefined = undefined;
+
+    set({ isPlaying: true, playheadCols: {} });
+
+    ids.forEach((id) => {
+      const frame = canvasState.canvases[id];
+      if (!frame) return;
+
+      const resumeCol = playheadCols[id] ?? 0;
+      const startCol =
+        resumeCol > 0 && resumeCol < frame.gridWidth ? Math.floor(resumeCol) : 0;
+
+      playGlyph(
+        id,
+        bpm,
+        startCol,
+        true, // always loop (option C: all canvases loop until stopped)
+        (col) => get().setPlayheadCol(id, col),
+        () => {
+          // Individual canvas ended (non-loop). Check if all done.
+          const remaining = Object.keys(get().playheadCols).filter(
+            (cid) => get().playheadCols[cid] > 0
+          );
+          if (remaining.length === 0) {
+            set({ isPlaying: false, playheadCols: {} });
+          }
+        },
+        sharedNow,
+      );
+
+      // After the first canvas establishes the AudioContext clock, subsequent
+      // canvases will use the same `sharedNow`. Since playGlyph uses
+      // `context.currentTime + 0.05` as default, and all calls happen
+      // synchronously in this forEach, they'll all get the same value anyway —
+      // but being explicit makes the intent clear and future-proof.
+      // (sharedNow remains undefined; playGlyph computes it consistently.)
     });
-    playGlyph(
-      id,
-      bpm,
-      startCol,
-      isLooping,
-      (col) => set({ playheadCol: col }),
-      () => set({ isPlaying: false, playbackCanvasId: null, playheadCol: 0 }),
-    );
   },
 
   pausePlayback: () => {
-    // Freeze playhead where it is, kill scheduled notes + rAF. Don't clear
-    // playbackCanvasId — we want the next startPlayback to resume on the
-    // same canvas.
     stopPlayback();
     set({ isPlaying: false });
   },
 
   stopPlayback: () => {
     stopPlayback();
-    set({ isPlaying: false, playbackCanvasId: null, playheadCol: 0 });
+    set({ isPlaying: false, playheadCols: {} });
   },
 
   resetPlayback: () => {
     stopPlayback();
-    set({ isPlaying: false, playbackCanvasId: null, playheadCol: 0 });
+    set({ isPlaying: false, playheadCols: {} });
   },
 }));

@@ -12,7 +12,7 @@ const SHAPES: { key: PixelShape; label: string; left: number; top: number; angle
   { key: 'square',   label: 'SQ',  left: 75,  top: 0,   angle: -90 },   // top center
   { key: 'star',     label: 'STR', left: 0,   top: 40,  angle: -150 },  // upper-left
   { key: 'circle',   label: 'CL',  left: 150, top: 40,  angle: -30 },   // upper-right
-  { key: 'metaball', label: 'MB',  left: 0,   top: 128, angle: 150 },   // lower-left
+  { key: 'cross',    label: 'CS',  left: 0,   top: 128, angle: 150 },   // lower-left
   { key: 'diamond',  label: 'DM',  left: 150, top: 128, angle: 30 },    // lower-right
   { key: 'triangle', label: 'TR',  left: 75,  top: 168, angle: 90 },    // bottom center
 ];

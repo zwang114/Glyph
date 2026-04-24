@@ -20,20 +20,52 @@ function getCtx(): AudioContext {
 
 /**
  * Lazily (re)create the sequence bus so each playGlyph has a fresh bus.
- * Signal path: notes → sequenceBus (gain) → compressor → destination.
- * The compressor catches dense chords before they clip the output.
+ *
+ * Signal chain:
+ *   notes → bus → lowpass → compressor → destination  (dry)
+ *   notes → bus → lowpass → preDelay (22ms) → compressor  (one reflection)
+ *
+ * The lowpass rolls off above ~8kHz for tape warmth. The single non-feedback
+ * pre-delay adds subtle room presence without any ringing or energy buildup.
+ * Compressor keeps dense chords from clipping.
  */
 function getSequenceBus(context: AudioContext): GainNode {
   if (!sequenceBus) {
+    const t = context.currentTime;
+
     sequenceBus = context.createGain();
-    sequenceBus.gain.setValueAtTime(1, context.currentTime);
+    sequenceBus.gain.setValueAtTime(1, t);
+
+    // Gentle air shelf — rolls off only above ~8kHz
+    const lowpass = context.createBiquadFilter();
+    lowpass.type = 'lowpass';
+    lowpass.frequency.setValueAtTime(8000, t);
+    lowpass.Q.setValueAtTime(0.5, t);
+
     sequenceCompressor = context.createDynamicsCompressor();
-    sequenceCompressor.threshold.setValueAtTime(-18, context.currentTime);
-    sequenceCompressor.knee.setValueAtTime(6, context.currentTime);
-    sequenceCompressor.ratio.setValueAtTime(4, context.currentTime);
-    sequenceCompressor.attack.setValueAtTime(0.003, context.currentTime);
-    sequenceCompressor.release.setValueAtTime(0.12, context.currentTime);
-    sequenceBus.connect(sequenceCompressor);
+    sequenceCompressor.threshold.setValueAtTime(-18, t);
+    sequenceCompressor.knee.setValueAtTime(6, t);
+    sequenceCompressor.ratio.setValueAtTime(4, t);
+    sequenceCompressor.attack.setValueAtTime(0.003, t);
+    sequenceCompressor.release.setValueAtTime(0.12, t);
+
+    // Non-feedback pre-delay — a single early reflection at ~22ms.
+    // No feedback loop means no resonator ringing after notes stop; the
+    // reflection simply decays to silence the moment the dry signal does.
+    // This adds subtle room depth without any echo buildup or pulsing throb.
+    const preDelay = context.createDelay(0.1);
+    preDelay.delayTime.setValueAtTime(0.022, t);
+    const preDelayGain = context.createGain();
+    preDelayGain.gain.setValueAtTime(0.18, t); // quiet reflection — presence not echo
+
+    // Signal path:
+    //   bus → lowpass → compressor → destination  (dry)
+    //   bus → lowpass → preDelay → preDelayGain → compressor  (one reflection)
+    sequenceBus.connect(lowpass);
+    lowpass.connect(sequenceCompressor);           // dry path
+    lowpass.connect(preDelay);
+    preDelay.connect(preDelayGain);
+    preDelayGain.connect(sequenceCompressor);      // single reflection
     sequenceCompressor.connect(context.destination);
   }
   return sequenceBus;
@@ -67,9 +99,24 @@ function shapeToOscType(shape: PixelShape): OscType {
     case 'circle': return 'sine';
     case 'diamond': return 'sawtooth';
     case 'triangle': return 'triangle';
-    case 'metaball': return 'sine'; // FM modulated below
-    case 'star': return 'sine';     // AM modulated below
+    case 'cross': return 'triangle'; // only used by the generic path — cross has its own branch
+    case 'star': return 'sine';      // AM modulated below
   }
+}
+
+/**
+ * Shared 0.5s mono noise buffer, generated lazily and cached. Used as the
+ * pick/excitation burst at the front of each guitar note.
+ */
+let noiseBuffer: AudioBuffer | null = null;
+function getNoiseBuffer(context: AudioContext): AudioBuffer {
+  if (!noiseBuffer) {
+    const length = Math.floor(context.sampleRate * 0.5);
+    noiseBuffer = context.createBuffer(1, length, context.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
+  }
+  return noiseBuffer;
 }
 
 function playNote(
@@ -96,7 +143,7 @@ function playNote(
   const attack = 0.012;
   const decay = 0.12;
   const sustainLevel = gain * 0.8;
-  const releaseTime = Math.max(0.06, Math.min(duration * 0.4, 0.22));
+  const releaseTime = Math.max(0.04, Math.min(duration * 0.15, 0.08));
   const envelopeEnd = t + duration + releaseTime;
   // Oscillators stop AFTER the envelope has ramped the gain to silence,
   // so the hard stop never cuts a live waveform.
@@ -126,54 +173,230 @@ function playNote(
   masterGain.connect(hpf);
   hpf.connect(destination);
 
-  if (shape === 'star') {
-    // AM synthesis: carrier modulated by a low-freq sine → bell-like
-    const carrier = context.createOscillator();
-    carrier.type = 'sine';
-    carrier.frequency.setValueAtTime(freq, t);
+  if (shape === 'circle') {
+    // ── Soft lo-fi piano ─────────────────────────────────────────────
+    // Sine fundamental + quiet octave harmonic. Sounds like a cheap
+    // electric piano or a muted upright. Very clean, no buzz.
+    const fundamental = context.createOscillator();
+    fundamental.type = 'sine';
+    fundamental.frequency.setValueAtTime(freq, t);
 
-    const modFreq = 6;
-    const modGain = context.createGain();
-    modGain.gain.setValueAtTime(0.5, t);
-    const mod = context.createOscillator();
-    mod.type = 'sine';
-    mod.frequency.setValueAtTime(modFreq, t);
-    mod.connect(modGain);
-    modGain.connect(masterGain.gain);
+    const octave = context.createOscillator();
+    octave.type = 'sine';
+    octave.frequency.setValueAtTime(freq * 2, t);
 
-    carrier.connect(masterGain);
-    carrier.start(t);
-    carrier.stop(oscStop);
-    mod.start(t);
-    mod.stop(oscStop);
-  } else if (shape === 'metaball') {
-    // FM synthesis: modulator at 2x carrier frequency
-    const carrier = context.createOscillator();
-    carrier.type = 'sine';
-    carrier.frequency.setValueAtTime(freq, t);
+    const octaveGain = context.createGain();
+    octaveGain.gain.setValueAtTime(0.18, t); // subtle sparkle
 
-    const modFreqVal = freq * 2;
-    const modDepth = context.createGain();
-    modDepth.gain.setValueAtTime(freq * 0.8, t);
-    modDepth.gain.exponentialRampToValueAtTime(freq * 0.05, envelopeEnd);
-    const mod = context.createOscillator();
-    mod.type = 'sine';
-    mod.frequency.setValueAtTime(modFreqVal, t);
-    mod.connect(modDepth);
-    modDepth.connect(carrier.frequency);
+    fundamental.connect(masterGain);
+    octave.connect(octaveGain);
+    octaveGain.connect(masterGain);
 
-    carrier.connect(masterGain);
-    carrier.start(t);
-    carrier.stop(oscStop);
-    mod.start(t);
-    mod.stop(oscStop);
+    fundamental.start(t); fundamental.stop(oscStop);
+    octave.start(t); octave.stop(oscStop);
+
+  } else if (shape === 'square') {
+    // ── Muted thumb bass ─────────────────────────────────────────────
+    // Pure sine at the note freq + sub-octave sine one octave down.
+    // No square wave — too buzzy. Sits low and warm, good for bass lines.
+    const body = context.createOscillator();
+    body.type = 'sine';
+    body.frequency.setValueAtTime(freq, t);
+
+    const sub = context.createOscillator();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(freq * 0.5, t); // octave below
+
+    const subGain = context.createGain();
+    subGain.gain.setValueAtTime(0.35, t);
+
+    // Quick-close lowpass so it sounds muted/thumpy
+    const thump = context.createBiquadFilter();
+    thump.type = 'lowpass';
+    thump.frequency.setValueAtTime(900, t);
+    thump.frequency.exponentialRampToValueAtTime(700, t + 0.18);
+    thump.Q.setValueAtTime(0.8, t);
+
+    body.connect(thump);
+    sub.connect(subGain);
+    subGain.connect(thump);
+    thump.connect(masterGain);
+
+    body.start(t); body.stop(oscStop);
+    sub.start(t); sub.stop(oscStop);
+
+  } else if (shape === 'diamond') {
+    // ── Lo-fi keys (Rhodes-ish) ───────────────────────────────────────
+    // Triangle (warm body) + very quiet filtered sawtooth (the bell-like
+    // tine buzz of a Rhodes). Lowpass closes quickly so it mellows out.
+    const tine = context.createOscillator();
+    tine.type = 'triangle';
+    tine.frequency.setValueAtTime(freq, t);
+
+    const buzz = context.createOscillator();
+    buzz.type = 'sawtooth';
+    buzz.frequency.setValueAtTime(freq, t);
+
+    const buzzGain = context.createGain();
+    buzzGain.gain.setValueAtTime(0.12, t);
+
+    // Tine filter — bright on the attack, settles warm
+    const toneFilter = context.createBiquadFilter();
+    toneFilter.type = 'lowpass';
+    toneFilter.frequency.setValueAtTime(freq * 6, t);
+    toneFilter.frequency.exponentialRampToValueAtTime(freq * 5.0, t + 0.3);
+    toneFilter.Q.setValueAtTime(1.4, t);
+
+    tine.connect(toneFilter);
+    buzz.connect(buzzGain);
+    buzzGain.connect(toneFilter);
+    toneFilter.connect(masterGain);
+
+    tine.start(t); tine.stop(oscStop);
+    buzz.start(t); buzz.stop(oscStop);
+
+  } else if (shape === 'triangle') {
+    // ── Vibraphone / marimba ──────────────────────────────────────────
+    // Sine at root + sine at 4x (the characteristic metallic overtone of
+    // mallet percussion). The overtone decays faster than the fundamental
+    // to mimic the way a mallet strike rings then settles.
+    const root = context.createOscillator();
+    root.type = 'sine';
+    root.frequency.setValueAtTime(freq, t);
+
+    const bell = context.createOscillator();
+    bell.type = 'sine';
+    bell.frequency.setValueAtTime(freq * 4.0, t);
+
+    const bellGain = context.createGain();
+    bellGain.gain.setValueAtTime(0.28, t);
+    // Overtone decays in ~120ms, root sustains normally
+    bellGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+
+    root.connect(masterGain);
+    bell.connect(bellGain);
+    bellGain.connect(masterGain);
+
+    root.start(t); root.stop(oscStop);
+    bell.start(t); bell.stop(t + 0.15);
+
+  } else if (shape === 'star') {
+    // ── Airy pad ─────────────────────────────────────────────────────
+    // Very slow AM (0.5Hz) so the modulation reads as gentle breathing /
+    // tremolo rather than the 6Hz flutter of the old version.
+    // Two detuned carriers make it wide and ethereal.
+    const carrier1 = context.createOscillator();
+    carrier1.type = 'sine';
+    carrier1.frequency.setValueAtTime(freq, t);
+    carrier1.detune.setValueAtTime(-6, t);
+
+    const carrier2 = context.createOscillator();
+    carrier2.type = 'sine';
+    carrier2.frequency.setValueAtTime(freq, t);
+    carrier2.detune.setValueAtTime(+6, t);
+
+    const carrierMix = context.createGain();
+    carrierMix.gain.setValueAtTime(0.5, t);
+    carrier1.connect(carrierMix);
+    carrier2.connect(carrierMix);
+
+    // Slow tremolo via AM
+    const lfo = context.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.setValueAtTime(0.5, t);
+    const lfoGain = context.createGain();
+    lfoGain.gain.setValueAtTime(0.2, t); // gentle — only ±20% volume swing
+    lfo.connect(lfoGain);
+    lfoGain.connect(masterGain.gain);
+
+    carrierMix.connect(masterGain);
+    carrier1.start(t); carrier1.stop(oscStop);
+    carrier2.start(t); carrier2.stop(oscStop);
+    lfo.start(t); lfo.stop(oscStop);
+
+  } else if (shape === 'cross') {
+    // ── Reverb guitar ────────────────────────────────────────────────
+    // Re-write the envelope for this voice: a fast attack + long
+    // exponential decay (a plucked string doesn't sustain flat — it
+    // decays immediately from peak). Override the earlier ADSR schedule
+    // so the voice truly decays.
+    masterGain.gain.cancelScheduledValues(t);
+    masterGain.gain.setValueAtTime(0.0001, t);
+    masterGain.gain.exponentialRampToValueAtTime(gain * 1.05, t + 0.006); // quick pluck
+    // Long decay — strings ring out well beyond the note's scheduled
+    // duration. We cap it at 1.5s so dense columns don't pile up forever.
+    const ringTail = Math.max(0.8, Math.min(1.5, duration + 0.6));
+    masterGain.gain.exponentialRampToValueAtTime(0.0001, t + ringTail);
+
+    // Body: triangle (warm fundamental) + saw (string buzz), detuned
+    // unison for the shimmer of two slightly out-of-tune strings.
+    const detune = 6;
+    const tri1 = context.createOscillator();
+    tri1.type = 'triangle';
+    tri1.frequency.setValueAtTime(freq, t);
+    tri1.detune.setValueAtTime(-detune, t);
+    const tri2 = context.createOscillator();
+    tri2.type = 'triangle';
+    tri2.frequency.setValueAtTime(freq, t);
+    tri2.detune.setValueAtTime(+detune, t);
+    const saw = context.createOscillator();
+    saw.type = 'sawtooth';
+    saw.frequency.setValueAtTime(freq, t);
+
+    // Body mix — triangles louder than saw (saw adds the buzz character
+    // without dominating the tone).
+    const bodyMix = context.createGain();
+    bodyMix.gain.setValueAtTime(0.55, t);
+    const sawMix = context.createGain();
+    sawMix.gain.setValueAtTime(0.22, t);
+
+    tri1.connect(bodyMix);
+    tri2.connect(bodyMix);
+    saw.connect(sawMix);
+
+    // Pick noise burst — a tiny slice of highpassed noise at the attack
+    // gives the "thwack" of a pick against string. Envelopes out in ~40ms.
+    const noise = context.createBufferSource();
+    noise.buffer = getNoiseBuffer(context);
+    const noiseHpf = context.createBiquadFilter();
+    noiseHpf.type = 'highpass';
+    noiseHpf.frequency.setValueAtTime(1800, t);
+    const noiseGain = context.createGain();
+    noiseGain.gain.setValueAtTime(0.0001, t);
+    noiseGain.gain.exponentialRampToValueAtTime(gain * 0.45, t + 0.003);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
+    noise.connect(noiseHpf);
+    noiseHpf.connect(noiseGain);
+
+    // Tone filter — lowpass that snaps open at the attack then settles
+    // down. Makes the pluck sound bright-then-warm like a guitar body.
+    const tone = context.createBiquadFilter();
+    tone.type = 'lowpass';
+    tone.Q.setValueAtTime(1.1, t);
+    tone.frequency.setValueAtTime(Math.max(1400, freq * 4), t);
+    tone.frequency.exponentialRampToValueAtTime(
+      Math.max(900, freq * 2.4),
+      t + 0.25
+    );
+
+    // Route: [body + saw + noise] → tone filter → masterGain (→ hpf → dest)
+    bodyMix.connect(tone);
+    sawMix.connect(tone);
+    noiseGain.connect(tone);
+    tone.connect(masterGain);
+
+    const cStop = t + ringTail + 0.05;
+    tri1.start(t); tri1.stop(cStop);
+    tri2.start(t); tri2.stop(cStop);
+    saw.start(t); saw.stop(cStop);
+    noise.start(t); noise.stop(t + 0.06);
   } else {
+    // Fallback — plain sine for any future shape not yet assigned a voice.
     const osc = context.createOscillator();
-    osc.type = shapeToOscType(shape);
+    osc.type = 'sine';
     osc.frequency.setValueAtTime(freq, t);
     osc.connect(masterGain);
-    osc.start(t);
-    osc.stop(oscStop);
+    osc.start(t); osc.stop(oscStop);
   }
 }
 
@@ -201,7 +424,8 @@ export function playPixel(
 // Scheduled node stop handles so we can cancel playback
 let scheduledStops: (() => void)[] = [];
 let playbackTimeout: ReturnType<typeof setTimeout> | null = null;
-let playheadRaf: number | null = null;
+// One rAF handle per active canvas so stopPlayback can kill them all.
+const playheadRafs: Map<string, number> = new Map();
 
 /**
  * Live column scheduler. Instead of baking the entire sequence at Play
@@ -221,15 +445,22 @@ export function playGlyph(
   startCol: number = 0,
   loop: boolean = false,
   onPlayheadUpdate?: (col: number) => void,
-  onEnd?: () => void
+  onEnd?: () => void,
+  // Shared audio-clock origin so multiple canvases started together stay
+  // in perfect sync. Pass the same value to all playGlyph calls in a batch.
+  sharedNow?: number
 ) {
-  stopPlayback();
+  // Cancel any existing rAF for this specific canvas (not all canvases).
+  const existingRaf = playheadRafs.get(canvasId);
+  if (existingRaf !== undefined) cancelAnimationFrame(existingRaf);
+  playheadRafs.delete(canvasId);
   try {
     const context = getCtx();
     const bus = getSequenceBus(context);
     const colDuration = 60 / bpm;
     // Audio-clock time at which column `firstCol` is heard.
-    const now = context.currentTime + 0.05;
+    // Use the shared origin if provided so all canvases are phase-locked.
+    const now = sharedNow ?? (context.currentTime + 0.05);
     const firstCol = Math.max(0, Math.floor(startCol));
     // How far ahead of the playhead we schedule each column. Must be long
     // enough to survive a dropped frame or a slow rAF tick, short enough
@@ -250,6 +481,10 @@ export function playGlyph(
       const frame = useCanvasStore.getState().canvases[canvasId];
       if (!frame) return;
       if (col < 0 || col >= frame.gridWidth) return;
+      // Muted canvas: the playhead still advances (tick handles that), but no
+      // notes are scheduled. Toggling mute mid-playback cleanly silences
+      // from the next scheduled column onward.
+      if (frame.muted) return;
       const { pixels, pixelShapes, pixelShape, pixelDensity, gridHeight, gridWidth } = frame;
       const gain = 0.2 + pixelDensity * 0.25;
       const startTime = now + (col - firstCol) * colDuration;
@@ -340,14 +575,18 @@ export function playGlyph(
 
       const reachedEnd = colFloat >= gridWidth;
       if (!reachedEnd) {
-        playheadRaf = requestAnimationFrame(tick);
+        playheadRafs.set(canvasId, requestAnimationFrame(tick));
       } else if (loop) {
-        playGlyph(canvasId, bpm, 0, true, onPlayheadUpdate, onEnd);
+        // On loop, advance `now` by exactly one sequence length so the next
+        // pass starts phase-locked to the beat grid — no drift accumulation.
+        const nextNow = now + gridWidth * colDuration;
+        playGlyph(canvasId, bpm, 0, true, onPlayheadUpdate, onEnd, nextNow);
       } else {
+        playheadRafs.delete(canvasId);
         onEnd?.();
       }
     };
-    playheadRaf = requestAnimationFrame(tick);
+    playheadRafs.set(canvasId, requestAnimationFrame(tick));
   } catch {
     // ignore
   }
@@ -372,6 +611,7 @@ export function stopPlayback() {
       try { busToKill.disconnect(); } catch { /* ignore */ }
       try { compToKill?.disconnect(); } catch { /* ignore */ }
     }, 20);
+
     sequenceBus = null;
     sequenceCompressor = null;
   }
@@ -383,8 +623,8 @@ export function stopPlayback() {
     clearTimeout(playbackTimeout);
     playbackTimeout = null;
   }
-  if (playheadRaf !== null) {
-    cancelAnimationFrame(playheadRaf);
-    playheadRaf = null;
+  for (const rafId of playheadRafs.values()) {
+    cancelAnimationFrame(rafId);
   }
+  playheadRafs.clear();
 }

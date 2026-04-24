@@ -1,8 +1,10 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { useParams } from 'react-router';
 import { PixelCanvas } from '../../canvas/PixelCanvas';
 import { useEditorStore } from '../../stores/editorStore';
 import { useCanvasStore } from '../../stores/canvasStore';
 import { useDrawerStore } from '../../stores/drawerStore';
+import { useProjectPersistence } from '../../stores/projectPersistence';
 import { PhysicsPanels } from '../shared/PhysicsPanels';
 import type { PhysicsPanelsHandle } from '../shared/PhysicsPanels';
 import { ToolDrawer } from '../shared/ToolDrawer';
@@ -11,6 +13,7 @@ import { RadialShapeSelector } from '../shared/RadialShapeSelector';
 import { DensitySlider } from '../shared/DensitySlider';
 import { RadialMirrorSelector } from '../shared/RadialMirrorSelector';
 import { CharacterInput } from '../shared/CharacterInput';
+import { MuteCanvasControl } from '../shared/MuteCanvasControl';
 import { BPMControl } from '../shared/BPMControl';
 import type { EditorTool, MirrorMode, PixelShape } from '../../types/editor';
 
@@ -22,6 +25,12 @@ import type { EditorTool, MirrorMode, PixelShape } from '../../types/editor';
  * but writes become no-ops until a canvas is re-selected.
  */
 export function WorkspaceView() {
+  const { id: projectId } = useParams();
+  // Load saved workspace on mount, debounce-write on every change.
+  // `hydrated` gates the first render so we don't flash an empty state
+  // on refresh.
+  const { hydrated } = useProjectPersistence(projectId);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ w: 1200, h: 800 });
 
@@ -43,6 +52,7 @@ export function WorkspaceView() {
   const setOnionSkinEnabled = useCanvasStore((s) => s.setOnionSkinEnabled);
   const setOnionSkinFont = useCanvasStore((s) => s.setOnionSkinFont);
   const setOnionSkinSize = useCanvasStore((s) => s.setOnionSkinSize);
+  const setCanvasMuted = useCanvasStore((s) => s.setCanvasMuted);
   const resizeCanvas = useCanvasStore((s) => s.resizeCanvas);
   const assignLetter = useCanvasStore((s) => s.assignLetter);
   const canvases = useCanvasStore((s) => s.canvases);
@@ -59,6 +69,7 @@ export function WorkspaceView() {
   const storeOnionFont = target?.onionSkinFont ?? 'sans-serif';
   const storeOnionSize = target?.onionSkinSize ?? 1.0;
   const storeLetter = target?.letter ?? null;
+  const storeMuted = target?.muted ?? false;
 
   // Fidget state — only used when no canvas is selected. Jumps to target
   // values whenever targetId changes (so selecting a canvas "jumps" the controls).
@@ -66,11 +77,13 @@ export function WorkspaceView() {
   const [fidgetDensity, setFidgetDensity] = useState<number>(storePixelDensity);
   const [fidgetMirror, setFidgetMirror] = useState<MirrorMode>(storeMirrorMode);
   const [fidgetLetter, setFidgetLetter] = useState<string | null>(storeLetter);
+  const [fidgetMuted, setFidgetMuted] = useState<boolean>(storeMuted);
   useEffect(() => {
     setFidgetShape(storePixelShape);
     setFidgetDensity(storePixelDensity);
     setFidgetMirror(storeMirrorMode);
     setFidgetLetter(storeLetter);
+    setFidgetMuted(storeMuted);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetId]);
 
@@ -80,6 +93,7 @@ export function WorkspaceView() {
   const pixelShape = selectedCanvasId ? storePixelShape : fidgetShape;
   const pixelDensity = selectedCanvasId ? storePixelDensity : fidgetDensity;
   const mirrorMode = selectedCanvasId ? storeMirrorMode : fidgetMirror;
+  const canvasMuted = selectedCanvasId ? storeMuted : fidgetMuted;
   // Onion controls apply universally to all existing canvases. If zero canvases
   // exist, the writes are silent — so we keep a local fidget copy for display.
   const [fidgetOnionEnabled, setFidgetOnionEnabled] = useState<boolean>(storeOnionEnabled);
@@ -179,6 +193,13 @@ export function WorkspaceView() {
       setTool(t);
     },
     [setTool]
+  );
+  const handleMuted = useCallback(
+    (muted: boolean) => {
+      if (selectedCanvasId) setCanvasMuted(selectedCanvasId, muted);
+      else setFidgetMuted(muted);
+    },
+    [selectedCanvasId, setCanvasMuted]
   );
 
   // ── Canvas W/H inputs ───────────────────────────────────────────────
@@ -343,6 +364,18 @@ export function WorkspaceView() {
         ),
       },
       {
+        id: 'mute', width: 162, height: 106, color: '#73DBC4', title: '', shape: 'pill' as const,
+        children: (
+          <div className="character-panel-body">
+            <MuteCanvasControl
+              value={canvasMuted}
+              isDisabled={!selectedCanvasId}
+              onChange={handleMuted}
+            />
+          </div>
+        ),
+      },
+      {
         id: 'bpm', width: 228, height: 106, color: '#FF92BE', title: '', shape: 'canvas' as const,
         children: <BPMControl />,
       },
@@ -365,6 +398,9 @@ export function WorkspaceView() {
       currentLetter,
       currentLetterIsDisabled,
       handleAssignLetter,
+      canvasMuted,
+      handleMuted,
+      selectedCanvasId,
     ]
   );
 
@@ -408,24 +444,28 @@ export function WorkspaceView() {
 
   return (
     <div className="editor-fullcanvas" ref={containerRef}>
-      <PixelCanvas />
-      <PhysicsPanels
-        ref={physicsRef}
-        panels={activePanels}
-        containerWidth={containerSize.w}
-        containerHeight={containerSize.h}
-        drawerOpen={drawerOpen}
-        drawerRightEdge={drawerEdge}
-        onPanelDroppedInDrawer={handlePanelDroppedInDrawer}
-      />
-      <ToolDrawer
-        panels={storedPanels}
-        containerWidth={containerSize.w}
-        containerHeight={containerSize.h}
-        onPanelDraggedOut={handlePanelDraggedOut}
-        onOpenChange={handleDrawerOpenChange}
-        dropPositions={dropPositionsRef.current}
-      />
+      {hydrated && (
+        <>
+          <PixelCanvas />
+          <PhysicsPanels
+            ref={physicsRef}
+            panels={activePanels}
+            containerWidth={containerSize.w}
+            containerHeight={containerSize.h}
+            drawerOpen={drawerOpen}
+            drawerRightEdge={drawerEdge}
+            onPanelDroppedInDrawer={handlePanelDroppedInDrawer}
+          />
+          <ToolDrawer
+            panels={storedPanels}
+            containerWidth={containerSize.w}
+            containerHeight={containerSize.h}
+            onPanelDraggedOut={handlePanelDraggedOut}
+            onOpenChange={handleDrawerOpenChange}
+            dropPositions={dropPositionsRef.current}
+          />
+        </>
+      )}
     </div>
   );
 }

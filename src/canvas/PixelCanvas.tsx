@@ -5,7 +5,7 @@ import { useAudioStore } from '../stores/audioStore';
 import { playPixel } from '../audio/audioEngine';
 import type { CanvasFrame } from '../types/canvas';
 import type { MirrorMode } from '../types/editor';
-import { drawShape, drawMetaballs } from '../engine/shapes';
+import { drawShape } from '../engine/shapes';
 
 // ─────────────────────────────────────────────────────────────────────
 // Visual constants
@@ -34,6 +34,15 @@ const PLUS_ICON_COLOR = '#E9D9CB';
 
 // Interaction thresholds
 const DRAG_START_PX = 3; // must move this far before a drag becomes a drag
+
+// Playback flash — each pixel the playhead crosses holds orange for
+// FLASH_HOLD_MS, then fades back to PIXEL_COLOR over FLASH_FADE_MS with
+// an ease-out curve.
+const FLASH_COLOR = { r: 0xff, g: 0x62, b: 0x00 }; // #FF6200
+const PIXEL_COLOR_RGB = { r: 0x1a, g: 0x1a, b: 0x1a }; // matches PIXEL_COLOR
+const FLASH_HOLD_MS = 200; // stays full orange this long before fading
+const FLASH_FADE_MS = 1100; // then fades back to black over this long
+const FLASH_DURATION_MS = FLASH_HOLD_MS + FLASH_FADE_MS;
 
 // Edge/corner resize hit zones — 6px band straddling each edge (half inside,
 // half outside the frame). Corners use an 8px square at each corner.
@@ -111,6 +120,18 @@ export function PixelCanvas() {
 
   // Cached per-frame bounds for hit-testing (recomputed on each draw)
   const frameBoundsRef = useRef<FrameBounds[]>([]);
+
+  // Playback flash state — per canvas, a map of cell key → flash start time
+  // (performance.now()). Pixels with an entry here are rendered as a lerp
+  // from orange → black based on elapsed time.
+  const flashMapRef = useRef<Map<string, Map<string, number>>>(new Map());
+  // Last integer column each canvas's playhead was seen at, to detect when
+  // the playhead enters a new column so we can re-fire flashes on that col.
+  const prevFlooredColRef = useRef<Map<string, number>>(new Map());
+  // rAF loop id for flash animation (independent of store-subscription
+  // redraws — flashes need to re-render even when nothing in the store
+  // changes, until every flash has finished fading).
+  const flashRafRef = useRef<number>(0);
 
   // ───────────────────────────────────────────────────────────────────
   // Coordinate helpers
@@ -469,40 +490,53 @@ export function PixelCanvas() {
       // falling back to the canvas's active brush shape for legacy cells / any
       // cell missing per-pixel metadata. This lets a canvas contain a mix of
       // shapes — changing the active shape doesn't touch existing pixels.
-      ctx.fillStyle = PIXEL_COLOR;
       const perCellShapes = frame.pixelShapes;
-      // Metaball is a whole-canvas effect: if ANY cell was painted with
-      // metaball, group those cells and render them as metaballs; render
-      // non-metaball cells as their own shapes alongside.
-      // Build a metaball mask and a per-shape list.
-      let hasMetaball = false;
-      const metaballMask: boolean[][] = Array.from(
-        { length: frame.gridHeight },
-        () => Array(frame.gridWidth).fill(false)
-      );
+      const frameFlashMap = flashMapRef.current.get(frame.id);
+      const nowMs = performance.now();
+      // Default color for pixels not currently flashing.
+      ctx.fillStyle = PIXEL_COLOR;
+      // Each cell renders with its own painted shape; unpainted cells skip.
+      // Legacy cells persisted with the removed 'metaball' value (no longer a
+      // valid PixelShape) fall back to cross so existing work keeps rendering.
       for (let r = 0; r < frame.gridHeight; r++) {
         for (let c = 0; c < frame.gridWidth; c++) {
           if (!frame.pixels[r][c]) continue;
-          const cellShape = perCellShapes?.[r]?.[c] ?? frame.pixelShape;
-          if (cellShape === 'metaball') {
-            metaballMask[r][c] = true;
-            hasMetaball = true;
+          let cellShape = perCellShapes?.[r]?.[c] ?? frame.pixelShape;
+          if ((cellShape as string) === 'metaball') cellShape = 'cross';
+
+          // Flash: full orange during the hold window, then ease-out
+          // lerp to black over the fade window.
+          const flashStart = frameFlashMap?.get(`${r},${c}`);
+          if (flashStart !== undefined) {
+            const elapsed = nowMs - flashStart;
+            let tEase: number;
+            if (elapsed < FLASH_HOLD_MS) {
+              tEase = 0; // held at full orange
+            } else {
+              const tLinear = Math.min(
+                1,
+                (elapsed - FLASH_HOLD_MS) / FLASH_FADE_MS
+              );
+              // Ease-out cubic: fast initial drop, long slow tail.
+              tEase = 1 - Math.pow(1 - tLinear, 3);
+            }
+            // t=0 → full orange; t=1 → full black.
+            const rCol = Math.round(
+              FLASH_COLOR.r + (PIXEL_COLOR_RGB.r - FLASH_COLOR.r) * tEase
+            );
+            const gCol = Math.round(
+              FLASH_COLOR.g + (PIXEL_COLOR_RGB.g - FLASH_COLOR.g) * tEase
+            );
+            const bCol = Math.round(
+              FLASH_COLOR.b + (PIXEL_COLOR_RGB.b - FLASH_COLOR.b) * tEase
+            );
+            ctx.fillStyle = `rgb(${rCol}, ${gCol}, ${bCol})`;
           } else {
-            drawShape(ctx, cellShape, r, c, b.cellSize, frame.pixelDensity, b.x, b.y);
+            ctx.fillStyle = PIXEL_COLOR;
           }
+
+          drawShape(ctx, cellShape, r, c, b.cellSize, frame.pixelDensity, b.x, b.y);
         }
-      }
-      if (hasMetaball) {
-        drawMetaballs(
-          ctx,
-          metaballMask,
-          frame.gridWidth,
-          frame.gridHeight,
-          b.cellSize,
-          frame.pixelDensity,
-          b.x,
-          b.y
-        );
       }
 
       // ── Hover preview (only on selected canvas) ──────────────────
@@ -515,7 +549,7 @@ export function PixelCanvas() {
             if (!frame.pixels[cell.row]?.[cell.col]) {
               drawShape(
                 ctx,
-                frame.pixelShape === 'metaball' ? 'circle' : frame.pixelShape,
+                frame.pixelShape,
                 cell.row,
                 cell.col,
                 b.cellSize,
@@ -553,7 +587,7 @@ export function PixelCanvas() {
             ) {
               drawShape(
                 ctx,
-                frame.pixelShape === 'metaball' ? 'circle' : frame.pixelShape,
+                frame.pixelShape,
                 cell.row,
                 cell.col,
                 b.cellSize,
@@ -574,7 +608,7 @@ export function PixelCanvas() {
               if (r >= 0 && r < frame.gridHeight && c >= 0 && c < frame.gridWidth) {
                 drawShape(
                   ctx,
-                  frame.pixelShape === 'metaball' ? 'circle' : frame.pixelShape,
+                  frame.pixelShape,
                   r,
                   c,
                   b.cellSize,
@@ -660,8 +694,8 @@ export function PixelCanvas() {
 
       // ── Playhead (during playback) ───────────────────────────────
       const audio = useAudioStore.getState();
-      if (audio.isPlaying && audio.playbackCanvasId === frame.id) {
-        const colPos = Math.max(0, Math.min(frame.gridWidth, audio.playheadCol));
+      if (audio.isPlaying && audio.playheadCols[frame.id] !== undefined) {
+        const colPos = Math.max(0, Math.min(frame.gridWidth, audio.playheadCols[frame.id]));
         const px = b.x + colPos * b.cellSize;
         ctx.save();
         // Dim trailing area (played pixels tint)
@@ -748,6 +782,105 @@ export function PixelCanvas() {
       unsub1();
       unsub2();
       unsub3();
+    };
+  }, [scheduleRedraw]);
+
+  // ───────────────────────────────────────────────────────────────────
+  // Playback flash: when the playhead enters a new column, every filled
+  // pixel in that column starts a 400ms fade from orange back to black.
+  // ───────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const checkPlayhead = () => {
+      const audio = useAudioStore.getState();
+      const canvasState = useCanvasStore.getState();
+
+      if (!audio.isPlaying) {
+        // Drop any lingering "new column" tracking so when playback restarts
+        // from col 0, we treat it as a fresh entry (fires flashes again).
+        prevFlooredColRef.current.clear();
+        return;
+      }
+
+      for (const [canvasId, rawCol] of Object.entries(audio.playheadCols)) {
+        const frame = canvasState.canvases[canvasId];
+        if (!frame) continue;
+        const col = Math.floor(
+          Math.max(0, Math.min(frame.gridWidth - 1, rawCol))
+        );
+        const prev = prevFlooredColRef.current.get(canvasId);
+        if (prev === col) continue;
+        prevFlooredColRef.current.set(canvasId, col);
+
+        // Playhead just entered a new column — flash every filled pixel.
+        const now = performance.now();
+        let map = flashMapRef.current.get(canvasId);
+        if (!map) {
+          map = new Map();
+          flashMapRef.current.set(canvasId, map);
+        }
+        for (let r = 0; r < frame.gridHeight; r++) {
+          if (frame.pixels[r]?.[col]) {
+            // Re-setting the key resets the flash to full brightness —
+            // exactly the desired behavior for overlapping hits.
+            map.set(`${r},${col}`, now);
+          }
+        }
+      }
+    };
+
+    const unsub = useAudioStore.subscribe(checkPlayhead);
+    // Fire once in case playback is already running when the effect mounts.
+    checkPlayhead();
+    return unsub;
+  }, []);
+
+  // rAF ticker: drives redraws while any flash is in progress OR while
+  // audio is playing (so the playhead itself updates smoothly between
+  // store events). Also prunes expired flash entries.
+  useEffect(() => {
+    const tick = () => {
+      const now = performance.now();
+      let anyActive = false;
+
+      // Prune expired flashes.
+      for (const [canvasId, map] of flashMapRef.current) {
+        for (const [key, startTime] of map) {
+          if (now - startTime >= FLASH_DURATION_MS) {
+            map.delete(key);
+          } else {
+            anyActive = true;
+          }
+        }
+        if (map.size === 0) flashMapRef.current.delete(canvasId);
+      }
+
+      const isPlaying = useAudioStore.getState().isPlaying;
+      if (anyActive || isPlaying) {
+        scheduleRedraw();
+        flashRafRef.current = requestAnimationFrame(tick);
+      } else {
+        flashRafRef.current = 0;
+      }
+    };
+
+    // Start the ticker when playback begins; stop when nothing to animate.
+    const startIfNeeded = () => {
+      if (flashRafRef.current) return;
+      const isPlaying = useAudioStore.getState().isPlaying;
+      const hasFlashes = flashMapRef.current.size > 0;
+      if (isPlaying || hasFlashes) {
+        flashRafRef.current = requestAnimationFrame(tick);
+      }
+    };
+
+    const unsub = useAudioStore.subscribe(startIfNeeded);
+    startIfNeeded();
+    return () => {
+      unsub();
+      if (flashRafRef.current) {
+        cancelAnimationFrame(flashRafRef.current);
+        flashRafRef.current = 0;
+      }
     };
   }, [scheduleRedraw]);
 

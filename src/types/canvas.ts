@@ -28,6 +28,11 @@ export interface CanvasFrame {
   onionSkinEnabled: boolean;
   onionSkinFont: 'serif' | 'sans-serif';
   onionSkinSize: number;
+  /**
+   * When true, this canvas produces no audio during playback. The playhead
+   * still runs; only note scheduling is skipped.
+   */
+  muted: boolean;
 }
 
 export interface WorkspaceViewport {
@@ -99,6 +104,7 @@ export function createEmptyCanvas(
     onionSkinEnabled: true,
     onionSkinFont: 'sans-serif',
     onionSkinSize: 1.0,
+    muted: false,
   };
 }
 
@@ -125,5 +131,6 @@ export function duplicateCanvasFrame(
     onionSkinEnabled: source.onionSkinEnabled,
     onionSkinFont: source.onionSkinFont,
     onionSkinSize: source.onionSkinSize,
+    muted: source.muted,
   };
 }

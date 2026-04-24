@@ -623,6 +623,46 @@ body {
   opacity: 0.4;
 }
 
+/* ── Mute canvas tool ────────────────────────────────────────────────
+   Mirrors the Character tool's pill panel + inner black box, but hosts a
+   toggle button instead of a text input. The panel uses a different tint
+   so the two look visually distinct at a glance. */
+.pill-panel[data-panel-id="mute"] .pill-header {
+  display: none;
+}
+.mute-canvas-box {
+  /* Slightly wider than the Character box so the label fits comfortably. */
+  width: 100px;
+}
+.mute-canvas-btn {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #73DBC4;
+  font-family: 'Noto Sans', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 0;
+  user-select: none;
+  transition: opacity 0.12s ease;
+}
+.mute-canvas-btn:hover {
+  opacity: 0.8;
+}
+.mute-canvas-btn.is-muted {
+  /* When muted, dim the label so the "ON" vs "MUTED" state reads at a glance */
+  opacity: 0.5;
+}
+.mute-canvas-btn.is-disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
 /* Triangle panel styles kept for backward compatibility (no longer used by
    the Character tool, but the shape type still exists on PanelDef). */
 .triangle-panel {

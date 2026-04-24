@@ -92,6 +92,7 @@ interface CanvasActions {
   setOnionSkinEnabled: (id: string, enabled: boolean) => void;
   setOnionSkinFont: (id: string, font: 'serif' | 'sans-serif') => void;
   setOnionSkinSize: (id: string, size: number) => void;
+  setCanvasMuted: (id: string, muted: boolean) => void;
   selectCanvas: (id: string | null) => void;
   setViewport: (vp: Partial<WorkspaceViewport>) => void;
 }
@@ -443,6 +444,15 @@ export const useCanvasStore = create<CanvasStore>()(
           const clamped = Math.max(0.3, Math.min(2, size));
           return {
             canvases: { ...s.canvases, [id]: { ...c, onionSkinSize: clamped } },
+          };
+        }),
+
+      setCanvasMuted: (id, muted) =>
+        set((s) => {
+          const c = s.canvases[id];
+          if (!c) return s;
+          return {
+            canvases: { ...s.canvases, [id]: { ...c, muted } },
           };
         }),
 

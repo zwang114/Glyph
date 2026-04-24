@@ -58,7 +58,14 @@ export const useAudioStore = create<AudioState & AudioActions>()((set, get) => (
       if (!id) return;
       const frame = canvasState.canvases[id];
       if (!frame) return;
-      playGlyph(id, bpm, Math.floor(playheadCol), next);
+      playGlyph(
+        id,
+        bpm,
+        Math.floor(playheadCol),
+        next,
+        (col) => set({ playheadCol: col }),
+        () => set({ isPlaying: false, playbackCanvasId: null, playheadCol: 0 }),
+      );
     }
   },
   setLooping: (v) => set({ isLooping: v }),
@@ -82,7 +89,14 @@ export const useAudioStore = create<AudioState & AudioActions>()((set, get) => (
       playbackCanvasId: id,
       playheadCol: startCol,
     });
-    playGlyph(id, bpm, startCol, isLooping);
+    playGlyph(
+      id,
+      bpm,
+      startCol,
+      isLooping,
+      (col) => set({ playheadCol: col }),
+      () => set({ isPlaying: false, playbackCanvasId: null, playheadCol: 0 }),
+    );
   },
 
   pausePlayback: () => {

@@ -219,7 +219,9 @@ export function playGlyph(
   canvasId: string,
   bpm: number,
   startCol: number = 0,
-  loop: boolean = false
+  loop: boolean = false,
+  onPlayheadUpdate?: (col: number) => void,
+  onEnd?: () => void
 ) {
   stopPlayback();
   try {
@@ -326,24 +328,15 @@ export function playGlyph(
         scheduleColumn(lastScheduledCol);
       }
 
-      // The audioStore is imported dynamically to avoid the circular dep
-      // (audioStore → audioEngine → audioStore). The store is always hot
-      // by the time the first tick fires, so this resolves instantly.
-      import('../stores/audioStore').then(({ useAudioStore }) => {
-        useAudioStore.getState().setPlayheadCol(playheadCol);
-      });
+      onPlayheadUpdate?.(playheadCol);
 
       const reachedEnd = colFloat >= gridWidth;
       if (!reachedEnd) {
         playheadRaf = requestAnimationFrame(tick);
       } else if (loop) {
-        // Seamless restart from column 0. stopPlayback inside playGlyph
-        // kills the current bus/rAF before the new pass begins.
-        playGlyph(canvasId, bpm, 0, true);
+        playGlyph(canvasId, bpm, 0, true, onPlayheadUpdate, onEnd);
       } else {
-        import('../stores/audioStore').then(({ useAudioStore }) => {
-          useAudioStore.getState().stopPlayback();
-        });
+        onEnd?.();
       }
     };
     playheadRaf = requestAnimationFrame(tick);

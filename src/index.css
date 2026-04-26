@@ -412,6 +412,77 @@ body {
   background: #fff;
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+ * Pencil-tool panel — 513×70 horizontal pencil silhouette
+ *
+ * The orange/pink gradient body comes from the inline SVG (rendered in
+ * PhysicsPanels). This stylesheet only covers:
+ *   - panel chassis (transparent so the SVG shows through)
+ *   - absolute-positioned pill buttons inside .pencil-tool-body
+ *   - active-vs-rest pill state
+ *
+ * Button geometry is locked: 38px tall, full-pill radius, 1px black border
+ * in BOTH states. Active pill flips fill to black and text to #FF6200.
+ * ──────────────────────────────────────────────────────────────────────── */
+.pencil-tool-panel {
+  background: transparent !important;
+  border-radius: 0 !important;
+  overflow: visible;
+  font-family: 'Noto Sans', sans-serif;
+}
+
+/* Body is a positioning context for the absolutely-placed pills. The Figma
+ * frame is 513×70 with buttons referenced from (0,0) of that frame. Since
+ * the panel itself is also 513×70, no offset math is needed here — the
+ * pill `left` values from PencilToolButtons.tsx map directly to the pencil
+ * coordinate system. */
+.pencil-tool-body {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.pencil-tool-buttons {
+  position: absolute;
+  inset: 0;
+}
+
+.pencil-tool-pill {
+  position: absolute;
+  top: 16px;
+  height: 38px;
+  padding: 0 16px;
+  border: 1px solid #000;
+  border-radius: 1000px;
+  background: transparent;
+  color: #000;
+  font-family: 'Noto Sans', sans-serif;
+  font-weight: 400;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  font-variation-settings: 'CTGR' 0, 'wdth' 100;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  pointer-events: auto;
+  user-select: none;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.pencil-tool-pill:hover:not(.is-active) {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.pencil-tool-pill.is-active {
+  background: #000;
+  color: #FF6200;
+  /* Keep the 1px black stroke under the black fill — locked per spec ("keep") */
+  border-color: #000;
+}
+
 /* Onion Skin panel (unified stem + bulb + bottom connector) */
 .onion-panel {
   background: transparent !important;
@@ -1136,6 +1207,7 @@ body {
   pointer-events: auto;
 }
 
+/* Top section sits inside the top rect of the dumbbell SVG (y=0..222). */
 .dumbbell-top {
   position: absolute;
   top: 16px;
@@ -1145,13 +1217,22 @@ body {
   justify-content: center;
 }
 
+/* Bottom section sits inside the bottom rect of the dumbbell SVG (y=246..308).
+   Padding per Figma: 16 left / 8 top / 16 right / 16 bottom.
+   → top: 246 + 8 = 254; bottom: 16. */
 .dumbbell-bottom {
   position: absolute;
-  top: 248px;
+  top: 254px;
+  bottom: 16px;
   left: 16px;
   right: 16px;
   display: flex;
   flex-direction: column;
+}
+
+/* Shape panel density slider — olive thumb on black track */
+.dumbbell-panel .density-slider-thumb {
+  background: #879900;
 }
 
 
@@ -1272,61 +1353,42 @@ body {
   touch-action: none;
 }
 
-.radial-lines {
+/* Shape icon buttons — no text label, just the shape SVG.
+   The dashed circle BG and dial layout are handled entirely inline in the component. */
+.radial-shape-btn {
   position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.6;
-  z-index: 0;
-}
-
-.radial-btn {
-  position: absolute;
-  z-index: 1;
-  font-family: var(--font-ui);
-  font-weight: normal;
-  font-size: 10px;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  border: 1px solid var(--color-bg);
-  border-radius: 50%;
+  z-index: 2;
+  border: none;
+  background: transparent;
   cursor: pointer;
-  background: var(--dial-color, transparent);
-  color: var(--color-bg);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s, color 0.15s;
-  z-index: 2;
   padding: 0;
+  transition: opacity 0.12s ease;
 }
 
-.radial-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
+.radial-shape-btn:hover:not(.radial-shape-btn--active) {
+  opacity: 0.7;
 }
 
-.radial-btn--active {
-  background: var(--color-bg);
-  color: var(--active-color, #879900);
-  border-color: var(--color-bg);
+.radial-shape-btn--active {
+  /* icon SVG handles the fill change */
 }
 
-.radial-btn--hover:not(.radial-btn--active) {
-  background: rgba(255, 255, 255, 0.25);
+.radial-shape-btn--hover:not(.radial-shape-btn--active) {
+  opacity: 0.8;
 }
 
 .radial-dial {
-  position: absolute;
-  background: var(--color-bg);
-  border-radius: 50%;
-  cursor: grab;
-  z-index: 1;
+  /* All layout/style applied inline — class kept for dragging cursor override */
 }
 
 .radial-dial--dragging {
-  cursor: grabbing;
+  cursor: grabbing !important;
 }
 
+/* Legacy indicator — kept for Mirror and other selectors that still use it */
 .radial-dial-indicator {
   width: 2px;
   height: 20px;
@@ -1336,6 +1398,176 @@ body {
   top: 10px;
   left: calc(50% - 1px);
   transform-origin: center calc(100% + 10px);
+}
+
+/* Shape selector gradient container — the 222×224 SHAPE panel top section.
+   Gradient matches Figma radialGradient with gradientTransform matrix:
+   matrix(3.0898e-15 10.3 -10.208 6.3069e-16 111 121)
+   → ellipse semi-axes ≈ 10.3 and 10.208 in user space units,
+     scaled ×10 in the 222px container → ~103px × ~102px hotspot,
+     center at (111px, 121px) within the 222×224 container.
+   Expressed as CSS: ellipse 46% 46% at 50% 54% (111/222 = 50%, 121/224 ≈ 54%).
+   Stops: orange@40%, amber@70%, olive@100% (from Figma color stops). */
+/* Shape selector gradient — fills the top-rect interior (y=0..222 = 222px tall).
+   Override dumbbell-top so the gradient flushes to all 4 inner edges with no
+   inner padding. The connector notch in the top edge is carved out via a
+   clip-path that mirrors the SVG body's notch (x=96..126, y=0..14, ~2px corner
+   round). Without the clip-path this rectangular div would paint OVER the
+   SVG cutout and the notch would visually disappear. */
+.shape-selector-top {
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 222px;
+  background: radial-gradient(
+    ellipse 46% 46% at 50% 50%,
+    #FF6200 0%,
+    #FF6200 40%,
+    #C37D00 70%,
+    #879900 100%
+  );
+  border-radius: 8px 8px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  /* Carve the top-edge notch to match the SVG path verbatim:
+     dip from y=0 to y=6 between x=96.998 and x=125.998 (28px wide × 6px deep).
+     Without this, the rectangular gradient div covers the notch cutout that
+     the SVG body underneath has carved out. */
+  clip-path: polygon(
+    0 0,
+    96.998px 0,
+    96.998px 6px,
+    125.998px 6px,
+    125.998px 0,
+    100% 0,
+    100% 100%,
+    0 100%
+  );
+}
+
+/* ── Mushroom panel (Forest Tone) ────────────────────────────────────
+   Same transparent-shell pattern as banner/dumbbell/onion — the SVG is
+   the actual visual body, the panel div just provides positioning. */
+.mushroom-panel {
+  background: transparent !important;
+  border-radius: 0 !important;
+  overflow: visible;
+  font-family: 'Noto Sans', sans-serif;
+}
+/* When the mushroom is snapped to the shape panel, lift the snapped pair
+   above neighboring panels so nothing slips between them and tank the
+   visual seam. The gradient itself is rendered inside the SVG fill. */
+.mushroom-panel[data-snapped='true'] {
+  z-index: 12 !important;
+}
+.dumbbell-panel[data-snapped='true'] .shape-selector-top {
+  /* Brown bleeds in from the top of the radial gradient so the mushroom
+     stem appears to extend into the shape panel rather than ending at
+     a hard color edge. The linear (brown→transparent) sits on top of the
+     existing radial — in CSS multi-backgrounds, the first listed layer is
+     painted last (on top). */
+  background:
+    linear-gradient(to bottom, #966538 0px, rgba(150, 101, 56, 0.7) 4px, transparent 24px),
+    radial-gradient(
+      ellipse 46% 46% at 50% 50%,
+      #FF6200 0%,
+      #FF6200 40%,
+      #C37D00 70%,
+      #879900 100%
+    );
+}
+.mushroom-header {
+  display: none;
+}
+.mushroom-title {
+  font-family: 'Noto Sans', sans-serif;
+  font-weight: 300;
+  font-size: 16px;
+  letter-spacing: 1.2px;
+  color: #000;
+  text-transform: uppercase;
+}
+/* Inner control covers the entire 74×80 mushroom — the body is just a click
+   target. The mushroom shape itself is the visual element. */
+.mushroom-body {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+
+/* ── Square Tone panel (sound profile connector) ─────────────────────
+   Same transparent-shell pattern as the mushroom — the SVG is the actual
+   visual body. Snaps onto the shape panel via its bottom peg, just like
+   the mushroom. */
+.square-tone-panel {
+  background: transparent !important;
+  border-radius: 0 !important;
+  overflow: visible;
+  font-family: 'Noto Sans', sans-serif;
+}
+.square-tone-panel[data-snapped='true'] {
+  z-index: 12 !important;
+}
+.square-tone-body {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+
+/* ── On/Off selector (used inside the mushroom panel) ───────────────── */
+.onoff-selector {
+  position: relative;
+  user-select: none;
+}
+.onoff-line {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.onoff-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-family: 'Noto Sans', sans-serif;
+  font-weight: 400;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 0;
+  transition: opacity 0.12s ease;
+}
+/* Inactive ON: black fill, accent-colored text. */
+.onoff-btn--on {
+  background: #000;
+  color: var(--accent, #966538);
+  border-color: #000;
+}
+/* Inactive OFF: accent fill, black text + black border. */
+.onoff-btn--off {
+  background: var(--accent, #966538);
+  color: #000;
+  border-color: #000;
+}
+/* Active state inverts the relevant button so the indicator pairing reads.
+   ON-active: keep black-on-accent (matches Figma, where ON is the dark pill).
+   OFF-active: keep accent-on-black + black border (matches Figma OFF chip). */
+.onoff-btn--active {
+  /* No visual change — Figma keeps both buttons in their static colors,
+     using the dial indicator alone to communicate state. We add a subtle
+     focus ring so keyboard users still get feedback. */
+  outline: 2px solid rgba(0, 0, 0, 0.18);
+  outline-offset: 2px;
+}
+.onoff-btn--hover {
+  opacity: 0.85;
+}
+.onoff-btn:hover:not(.onoff-btn--active) {
+  opacity: 0.85;
 }
 
 .pen-tip-icon {

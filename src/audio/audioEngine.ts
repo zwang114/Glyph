@@ -1,5 +1,11 @@
 import type { PixelShape } from '../types/editor';
 import { useCanvasStore } from '../stores/canvasStore';
+import { getProfile, DEFAULT_PROFILE_ID } from './soundProfiles';
+
+let _activeProfileId: string = DEFAULT_PROFILE_ID;
+export function setSoundProfile(id: string): void {
+  _activeProfileId = id;
+}
 
 // Shared AudioContext (reuses the one from useClickSound if already created)
 let ctx: AudioContext | null = null;
@@ -12,7 +18,7 @@ let ctx: AudioContext | null = null;
 let sequenceBus: GainNode | null = null;
 let sequenceCompressor: DynamicsCompressorNode | null = null;
 
-function getCtx(): AudioContext {
+export function getCtx(): AudioContext {
   if (!ctx) ctx = new AudioContext();
   if (ctx.state === 'suspended') ctx.resume();
   return ctx;
@@ -174,9 +180,10 @@ function playNote(
   hpf.connect(destination);
 
   if (shape === 'circle') {
-    // ── Soft lo-fi piano ─────────────────────────────────────────────
-    // Sine fundamental + quiet octave harmonic. Sounds like a cheap
-    // electric piano or a muted upright. Very clean, no buzz.
+    // ── Bright lo-fi piano ────────────────────────────────────────────
+    // Sine fundamental + octave harmonic + brief sparkle transient at 3×
+    // (two octaves + a fifth). The transient decays in 80ms so it reads
+    // as attack shimmer, not a persistent overtone.
     const fundamental = context.createOscillator();
     fundamental.type = 'sine';
     fundamental.frequency.setValueAtTime(freq, t);
@@ -186,44 +193,54 @@ function playNote(
     octave.frequency.setValueAtTime(freq * 2, t);
 
     const octaveGain = context.createGain();
-    octaveGain.gain.setValueAtTime(0.18, t); // subtle sparkle
+    octaveGain.gain.setValueAtTime(0.28, t); // raised from 0.18
+
+    // Sparkle transient — 3× freq (two octaves + fifth), fast decay
+    const sparkle = context.createOscillator();
+    sparkle.type = 'sine';
+    sparkle.frequency.setValueAtTime(freq * 3, t);
+    const sparkleGain = context.createGain();
+    sparkleGain.gain.setValueAtTime(0.08, t);
+    sparkleGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
 
     fundamental.connect(masterGain);
     octave.connect(octaveGain);
     octaveGain.connect(masterGain);
+    sparkle.connect(sparkleGain);
+    sparkleGain.connect(masterGain);
 
     fundamental.start(t); fundamental.stop(oscStop);
     octave.start(t); octave.stop(oscStop);
+    sparkle.start(t); sparkle.stop(t + 0.1);
 
   } else if (shape === 'square') {
-    // ── Muted thumb bass ─────────────────────────────────────────────
-    // Pure sine at the note freq + sub-octave sine one octave down.
-    // No square wave — too buzzy. Sits low and warm, good for bass lines.
+    // ── Warm mid-range keys ───────────────────────────────────────────
+    // Triangle body (richer than sine, cleaner than square) + fixed
+    // mid-range lowpass for presence + quiet octave-up sine for sparkle.
     const body = context.createOscillator();
-    body.type = 'sine';
+    body.type = 'triangle';
     body.frequency.setValueAtTime(freq, t);
 
-    const sub = context.createOscillator();
-    sub.type = 'sine';
-    sub.frequency.setValueAtTime(freq * 0.5, t); // octave below
+    // Octave-up sine adds brightness and presence without buzz
+    const bright = context.createOscillator();
+    bright.type = 'sine';
+    bright.frequency.setValueAtTime(freq * 2, t);
+    const brightGain = context.createGain();
+    brightGain.gain.setValueAtTime(0.15, t);
 
-    const subGain = context.createGain();
-    subGain.gain.setValueAtTime(0.35, t);
-
-    // Quick-close lowpass so it sounds muted/thumpy
+    // Fixed mid-range lowpass — no closing ramp, stays open and present
     const thump = context.createBiquadFilter();
     thump.type = 'lowpass';
-    thump.frequency.setValueAtTime(900, t);
-    thump.frequency.exponentialRampToValueAtTime(700, t + 0.18);
-    thump.Q.setValueAtTime(0.8, t);
+    thump.frequency.setValueAtTime(2200, t);
+    thump.Q.setValueAtTime(0.5, t);
 
     body.connect(thump);
-    sub.connect(subGain);
-    subGain.connect(thump);
     thump.connect(masterGain);
+    bright.connect(brightGain);
+    brightGain.connect(masterGain);
 
     body.start(t); body.stop(oscStop);
-    sub.start(t); sub.stop(oscStop);
+    bright.start(t); bright.stop(oscStop);
 
   } else if (shape === 'diamond') {
     // ── Lo-fi keys (Rhodes-ish) ───────────────────────────────────────
@@ -238,14 +255,14 @@ function playNote(
     buzz.frequency.setValueAtTime(freq, t);
 
     const buzzGain = context.createGain();
-    buzzGain.gain.setValueAtTime(0.12, t);
+    buzzGain.gain.setValueAtTime(0.18, t); // raised from 0.12 — more bell-like brightness
 
-    // Tine filter — bright on the attack, settles warm
+    // Tine filter — stays more open for bright lo-fi character
     const toneFilter = context.createBiquadFilter();
     toneFilter.type = 'lowpass';
-    toneFilter.frequency.setValueAtTime(freq * 6, t);
-    toneFilter.frequency.exponentialRampToValueAtTime(freq * 5.0, t + 0.3);
-    toneFilter.Q.setValueAtTime(1.4, t);
+    toneFilter.frequency.setValueAtTime(freq * 9, t);   // raised from freq * 6
+    toneFilter.frequency.exponentialRampToValueAtTime(freq * 7, t + 0.3); // raised from freq * 5
+    toneFilter.Q.setValueAtTime(2.0, t); // raised from 1.4 — resonant peak on attack
 
     tine.connect(toneFilter);
     buzz.connect(buzzGain);
@@ -300,16 +317,24 @@ function playNote(
     carrier1.connect(carrierMix);
     carrier2.connect(carrierMix);
 
-    // Slow tremolo via AM
+    // Tremolo via AM — 2Hz for classic lo-fi chord pad movement
     const lfo = context.createOscillator();
     lfo.type = 'sine';
-    lfo.frequency.setValueAtTime(0.5, t);
+    lfo.frequency.setValueAtTime(2.0, t); // raised from 0.5 — classic tremolo range
     const lfoGain = context.createGain();
-    lfoGain.gain.setValueAtTime(0.2, t); // gentle — only ±20% volume swing
+    lfoGain.gain.setValueAtTime(0.3, t); // raised from 0.2 — more pronounced movement
     lfo.connect(lfoGain);
     lfoGain.connect(masterGain.gain);
 
-    carrierMix.connect(masterGain);
+    // Subtle highpass on carrier mix — keeps the pad from muddying low end
+    // when stacked with bass or keys in a strummed column.
+    const padHpf = context.createBiquadFilter();
+    padHpf.type = 'highpass';
+    padHpf.frequency.setValueAtTime(200, t);
+    padHpf.Q.setValueAtTime(0.5, t);
+    carrierMix.connect(padHpf);
+    padHpf.connect(masterGain);
+
     carrier1.start(t); carrier1.stop(oscStop);
     carrier2.start(t); carrier2.stop(oscStop);
     lfo.start(t); lfo.stop(oscStop);
@@ -323,9 +348,9 @@ function playNote(
     masterGain.gain.cancelScheduledValues(t);
     masterGain.gain.setValueAtTime(0.0001, t);
     masterGain.gain.exponentialRampToValueAtTime(gain * 1.05, t + 0.006); // quick pluck
-    // Long decay — strings ring out well beyond the note's scheduled
-    // duration. We cap it at 1.5s so dense columns don't pile up forever.
-    const ringTail = Math.max(0.8, Math.min(1.5, duration + 0.6));
+    // Tighter ring tail — shorter min/max so the cross voice settles
+    // cleanly in strummed columns without ringing over other shapes.
+    const ringTail = Math.max(0.5, Math.min(1.0, duration + 0.4));
     masterGain.gain.exponentialRampToValueAtTime(0.0001, t + ringTail);
 
     // Body: triangle (warm fundamental) + saw (string buzz), detuned
@@ -363,7 +388,7 @@ function playNote(
     noiseHpf.frequency.setValueAtTime(1800, t);
     const noiseGain = context.createGain();
     noiseGain.gain.setValueAtTime(0.0001, t);
-    noiseGain.gain.exponentialRampToValueAtTime(gain * 0.45, t + 0.003);
+    noiseGain.gain.exponentialRampToValueAtTime(gain * 0.3, t + 0.003); // reduced from 0.45
     noiseGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
     noise.connect(noiseHpf);
     noiseHpf.connect(noiseGain);
@@ -411,6 +436,11 @@ export function playPixel(
   shape: PixelShape,
   density: number
 ) {
+  const profile = getProfile(_activeProfileId);
+  if (profile?.notePlayerFn) {
+    profile.notePlayerFn(row, gridHeight, shape, density, undefined, 1);
+    return;
+  }
   try {
     const context = getCtx();
     const freq = rowToHz(row, gridHeight);
@@ -512,35 +542,70 @@ export function playGlyph(
         return shapeAt(row, c - 1) !== here;
       };
 
-      let voices = 0;
-      for (let row = 0; row < gridHeight; row++) {
-        if (isRunStart(row, col)) voices++;
+      // ── Collect all run-start voices for this column ──────────────────────
+      // Each entry records the row, shape, and pre-computed run duration so
+      // the strum logic below can group by shape without re-walking the grid.
+      interface Voice {
+        row: number;
+        shape: PixelShape;
+        noteDuration: number;
       }
-      if (voices === 0) return;
-      const voiceGain = gain / Math.sqrt(voices);
-
+      const columnVoices: Voice[] = [];
       for (let row = 0; row < gridHeight; row++) {
         if (!isRunStart(row, col)) continue;
-
-        // Walk right to find the full extent of this run: consecutive
-        // same-shape cells until a gap or shape change.
         const here = shapeAt(row, col)!;
         let runEnd = col;
-        while (
-          runEnd + 1 < gridWidth &&
-          shapeAt(row, runEnd + 1) === here
-        ) {
+        while (runEnd + 1 < gridWidth && shapeAt(row, runEnd + 1) === here) {
           runEnd += 1;
         }
         const runLength = runEnd - col + 1;
-
         // 95% of the run span gives a tiny gap at the end — audible as a
-        // fresh attack when the next re-trigger segment (or adjacent note)
-        // begins. Makes dense patterns feel rhythmic instead of slurred.
-        const noteDuration = runLength * colDuration * 0.95;
+        // fresh attack when the next re-trigger segment begins.
+        columnVoices.push({ row, shape: here, noteDuration: runLength * colDuration * 0.95 });
+      }
 
-        const freq = rowToHz(row, gridHeight);
-        playNote(freq, here, voiceGain, safeStart, noteDuration, context, bus);
+      if (columnVoices.length === 0) return;
+
+      // 1/√n gain scaling across ALL voices in the column (unchanged).
+      const voiceGain = gain / Math.sqrt(columnVoices.length);
+
+      // ── Per-shape strum groups ─────────────────────────────────────────────
+      // Group voices by shape. Groups with 2+ members get a strum offset +
+      // micro jitter. Single-voice groups (or solo shapes) fire at safeStart
+      // with no offset — same as before.
+      const shapeGroups = new Map<PixelShape, Voice[]>();
+      for (const v of columnVoices) {
+        const group = shapeGroups.get(v.shape) ?? [];
+        group.push(v);
+        shapeGroups.set(v.shape, group);
+      }
+
+      for (const [, group] of shapeGroups) {
+        const shouldStrum = group.length >= 2;
+
+        // Strum order: bottom-to-top (highest row index fires first → upward strum).
+        // Sort descending by row so index 0 in the sorted array = bottom of canvas.
+        if (shouldStrum) {
+          group.sort((a, b) => b.row - a.row);
+        }
+
+        group.forEach((v, strumIdx) => {
+          // Relative strum offset: voice 0 fires at safeStart, each subsequent
+          // voice fires 18ms later. Total spread = (N-1) * 0.018s regardless
+          // of where on the grid the voices sit.
+          const strumOffset = shouldStrum ? strumIdx * 0.018 : 0;
+          // ±4ms humanization jitter — makes the timing feel played, not programmed.
+          const jitter = shouldStrum ? (Math.random() - 0.5) * 0.008 : 0;
+          const noteStart = safeStart + strumOffset + jitter;
+
+          const activeProfile = getProfile(_activeProfileId);
+          if (activeProfile?.notePlayerFn) {
+            activeProfile.notePlayerFn(v.row, gridHeight, v.shape, pixelDensity, noteStart, columnVoices.length, v.noteDuration);
+          } else {
+            const freq = rowToHz(v.row, gridHeight);
+            playNote(freq, v.shape, voiceGain, noteStart, v.noteDuration, context, bus);
+          }
+        });
       }
     };
 

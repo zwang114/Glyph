@@ -10,7 +10,9 @@ interface DrawerState {
 export const useDrawerStore = create<DrawerState>()(
   persist(
     (set) => ({
-      storedPanelIds: ['mirror', 'onion'],
+      // Forest connector mushroom starts in the drawer — user drags it out
+      // and snaps it onto the shape panel's top connector notch.
+      storedPanelIds: ['mirror', 'onion', 'forest', 'square-tone'],
       storePanel: (id) =>
         set((s) => ({
           storedPanelIds: s.storedPanelIds.includes(id)
@@ -24,9 +26,9 @@ export const useDrawerStore = create<DrawerState>()(
     }),
     {
       name: 'glyph-studio-drawer',
-      version: 1,
+      version: 3,
       partialize: (state) => ({ storedPanelIds: state.storedPanelIds }),
-      migrate: () => ({ storedPanelIds: ['mirror', 'onion'] }),
+      migrate: () => ({ storedPanelIds: ['mirror', 'onion', 'forest', 'square-tone'] }),
     }
   )
 );

@@ -2,13 +2,14 @@ import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams } from 'react-router';
 import { PixelCanvas } from '../../canvas/PixelCanvas';
 import { useEditorStore } from '../../stores/editorStore';
+import { useAudioStore } from '../../stores/audioStore';
 import { useCanvasStore } from '../../stores/canvasStore';
 import { useDrawerStore } from '../../stores/drawerStore';
 import { useProjectPersistence } from '../../stores/projectPersistence';
 import { PhysicsPanels } from '../shared/PhysicsPanels';
 import type { PhysicsPanelsHandle } from '../shared/PhysicsPanels';
 import { ToolDrawer } from '../shared/ToolDrawer';
-import { RadialBrushSelector } from '../shared/RadialBrushSelector';
+import { PencilToolButtons } from '../shared/PencilToolButtons';
 import { RadialShapeSelector } from '../shared/RadialShapeSelector';
 import { DensitySlider } from '../shared/DensitySlider';
 import { RadialMirrorSelector } from '../shared/RadialMirrorSelector';
@@ -39,6 +40,13 @@ export function WorkspaceView() {
   const setTool = useEditorStore((s) => s.setTool);
   const toggleGrid = useEditorStore((s) => s.toggleGrid);
   const toggleMetrics = useEditorStore((s) => s.toggleMetrics);
+  // Forest tone / sound profile is driven by whether the connector mushroom
+  // is snapped onto the pixel-shape panel. When the user plugs the mushroom
+  // in → forest tones; pull it out → default tones. We read the toggle action
+  // here; the current profile is read inline (via getState) inside the snap
+  // callback so this component doesn't re-render on every profile flip.
+  const toggleSoundProfile = useAudioStore((s) => s.toggleSoundProfile);
+  const setProfileById = useAudioStore((s) => s.setProfileById);
 
   // ── Canvas state (selection + per-canvas properties) ────────────────
   const selectedCanvasId = useCanvasStore((s) => s.selectedCanvasId);
@@ -286,19 +294,18 @@ export function WorkspaceView() {
   const panelDefs = useMemo(
     () => [
       {
-        id: 'tools', width: 222, height: 227, color: '#FF6200', title: '', shape: 'banner' as const,
+        id: 'tools', width: 513, height: 70, color: '#FF6200', title: '', shape: 'pencil-tool' as const,
         children: (
-          <RadialBrushSelector
-            value={activeTool === 'eraser' ? 'pixel' : activeTool}
-            onChange={handleTool}
-          />
+          <PencilToolButtons activeTool={activeTool} onChange={handleTool} />
         ),
       },
       {
-        id: 'shape', width: 222, height: 302, color: '#879900', title: '', shape: 'dumbbell' as const,
+        id: 'shape', width: 222, height: 308, color: '#879900', title: '', shape: 'dumbbell' as const,
         children: (
           <>
-            <div className="dumbbell-top">
+            <div className="dumbbell-top shape-selector-top">
+              {/* Connector notch at top is baked into the dumbbell SVG path itself
+                  (x=97..125, y=0..6). Reserved for a future feature attachment. */}
               <RadialShapeSelector value={pixelShape} onChange={handleShape} />
             </div>
             <div className="dumbbell-bottom">
@@ -376,6 +383,22 @@ export function WorkspaceView() {
         ),
       },
       {
+        // Connector mushroom — small 74×80 piece. Drags onto the shape panel's
+        // top notch and snaps in place. No interactive child element here so
+        // pointerdown reaches the panel-level drag handler unobstructed.
+        id: 'forest', width: 74, height: 80, color: '#966538', title: '', shape: 'mushroom' as const,
+        children: null,
+      },
+      {
+        // Square sound-profile connector — 74×80 with a single bottom peg.
+        // Same snap geometry as the mushroom: shoulders at y=74 sit on the
+        // shape panel's top edge, peg descends 6px into the notch.
+        // Audio wiring will be added in a follow-up; for now this is purely
+        // a visual + snap-mechanic tool.
+        id: 'square-tone', width: 74, height: 80, color: '#8C70CA', title: '', shape: 'square-tone' as const,
+        children: null,
+      },
+      {
         id: 'bpm', width: 228, height: 106, color: '#FF92BE', title: '', shape: 'canvas' as const,
         children: <BPMControl />,
       },
@@ -442,6 +465,31 @@ export function WorkspaceView() {
     setDrawerEdge(rightEdge);
   }, []);
 
+  // Mushroom snap → forest tone wiring. The visual connection IS the audio
+  // state: plug the mushroom into the shape panel's notch and the audio
+  // engine switches to the forest profile (ambient + softer pitches);
+  // detach it and the engine returns to default tones. We toggle only when
+  // the desired state differs from the current `soundProfile` so the
+  // ambient engine doesn't double-start or double-stop.
+  const handleSnapChange = useCallback(
+    (childId: string, partnerId: string | null) => {
+      const snapped = partnerId === 'shape';
+
+      if (childId === 'forest') {
+        // Mushroom → forest profile when snapped, default when detached
+        const current = useAudioStore.getState().soundProfile;
+        const wantsId = snapped ? 'forest' : 'default';
+        if (current !== wantsId) setProfileById(wantsId);
+      } else if (childId === 'square-tone') {
+        // Purple square → C418 profile when snapped, default when detached
+        const current = useAudioStore.getState().soundProfile;
+        const wantsId = snapped ? 'c418' : 'default';
+        if (current !== wantsId) setProfileById(wantsId);
+      }
+    },
+    [setProfileById]
+  );
+
   return (
     <div className="editor-fullcanvas" ref={containerRef}>
       {hydrated && (
@@ -455,6 +503,7 @@ export function WorkspaceView() {
             drawerOpen={drawerOpen}
             drawerRightEdge={drawerEdge}
             onPanelDroppedInDrawer={handlePanelDroppedInDrawer}
+            onSnapChange={handleSnapChange}
           />
           <ToolDrawer
             panels={storedPanels}

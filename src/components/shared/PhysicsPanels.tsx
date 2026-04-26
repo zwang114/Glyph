@@ -11,7 +11,7 @@ export interface PanelDef {
   height: number;
   color: string;
   title: string;
-  shape?: 'rect' | 'pen' | 'ticket' | 'snowman' | 'pill' | 'canvas' | 'onion' | 'pencil' | 'banner' | 'dumbbell' | 'triangle';
+  shape?: 'rect' | 'pen' | 'ticket' | 'snowman' | 'pill' | 'canvas' | 'onion' | 'pencil' | 'banner' | 'dumbbell' | 'triangle' | 'mushroom' | 'pencil-tool' | 'square-tone';
   children: React.ReactNode;
 }
 
@@ -26,6 +26,14 @@ interface PhysicsPanelsProps {
   drawerOpen?: boolean;
   drawerRightEdge?: number;
   onPanelDroppedInDrawer?: (panelId: string, x: number, y: number) => void;
+  /**
+   * Fires whenever a child panel forms or breaks a snap with its partner.
+   * `childId` is the connector panel (e.g. 'forest' mushroom); `partnerId`
+   * is the panel it snapped onto (e.g. 'shape') or `null` on detach.
+   * Use this to drive side effects tied to the connection — e.g. switching
+   * the audio profile when the forest mushroom plugs into the pixel tool.
+   */
+  onSnapChange?: (childId: string, partnerId: string | null) => void;
 }
 
 const PEN_TIP_HEIGHT = 82;
@@ -174,15 +182,133 @@ function createPanelBody(panel: PanelDef, x: number, y: number): Matter.Body {
     return Matter.Bodies.rectangle(x, y, w, h, { ...bodyOpts, chamfer: { radius: 16 } });
   }
 
-  if (panel.shape === 'dumbbell') {
-    // Dumbbell: two rounded rects connected by a narrow bridge
+  if (panel.shape === 'square-tone') {
+    // Square sound-profile connector — 74×80. Rounded square body (0..74,
+    // 0..74, 8px corner radius) with a single 28×6 peg at the bottom edge
+    // (x=22.998..50.998, y=74..80). Same snap geometry as the mushroom:
+    // shoulders at child-local y=74 sit on the partner panel's top edge,
+    // peg descends 6px into the partner's notch.
+    const sx = w / 74;
+    const sy = h / 80;
     const halfW = w / 2;
     const halfH = h / 2;
-    // Top section ~57%, bottom ~35%, bridge ~8%
-    const topH = h * 0.57;
-    const bridgeH = h * 0.08;
-    const bottomH = h * 0.35;
-    const bridgeW = w * 0.4; // narrow middle
+    const u = (px: number, py: number) => ({ x: px * sx - halfW, y: py * sy - halfH });
+    const verts = [
+      // Body — clockwise from top-left rolling over the top to the right.
+      // The 8px corner radius is approximated with two corner verts each.
+      u(0,     8),
+      u(8,     0),
+      u(66,    0),
+      u(74,    8),
+      u(74,    66),
+      u(66,    74),
+      // Drop down past the peg's right shoulder
+      u(51,    74),
+      u(51,    79),
+      u(50,    80),
+      u(24,    80),
+      u(23,    79),
+      u(23,    74),
+      // Back along the bottom-left of the body
+      u(8,     74),
+      u(0,     66),
+    ];
+    const body = Matter.Bodies.fromVertices(x, y, [verts], bodyOpts);
+    if (body) return body;
+    return Matter.Bodies.rectangle(x, y, w, h, { ...bodyOpts, chamfer: { radius: 8 } });
+  }
+
+  if (panel.shape === 'mushroom') {
+    // Mushroom — small 74×80 connector. Wide rounded cap (0..37) tapering
+    // into a narrow stem (37..74), with two small downward pegs (75..79)
+    // at x≈21..23 and x≈51..52. We scale to (w, h) since panels can be
+    // resized, but the source geometry assumes the 74×80 SVG aspect.
+    const sx = w / 74;
+    const sy = h / 80;
+    const halfW = w / 2;
+    const halfH = h / 2;
+    const u = (px: number, py: number) => ({ x: px * sx - halfW, y: py * sy - halfH });
+    const verts = [
+      // Cap — clockwise from left shoulder rolling over the top
+      u(0,    34),
+      u(4,    20),
+      u(15,   6),
+      u(37,   0),
+      u(59,   6),
+      u(70,   20),
+      u(74,   34),
+      // Cap underside cinches into the stem
+      u(74,   37),
+      u(51,   37),
+      u(48,   42),
+      u(60,   65),
+      // Stem flare to bottom-right peg
+      u(58,   72),
+      u(53,   74),
+      u(52,   74),
+      u(52,   79),
+      u(50,   80),
+      u(24,   80),
+      u(22,   79),
+      u(22,   74),
+      u(21,   74),
+      u(20,   74),
+      u(15,   72),
+      u(13,   65),
+      u(25,   42),
+      u(22,   37),
+      u(0,    37),
+    ];
+    const body = Matter.Bodies.fromVertices(x, y, [verts], bodyOpts);
+    if (body) return body;
+    return Matter.Bodies.rectangle(x, y, w, h, { ...bodyOpts, chamfer: { radius: 8 } });
+  }
+
+  if (panel.shape === 'pencil-tool') {
+    // Pencil tool: 513×70 horizontal silhouette — flat-left rounded body,
+    // long tapered point on the right. Tip apex is at x=513, y=35 in SVG
+    // coords; body→tip transition is around x=109. The two decorative
+    // notches at the body→tip seam are visual-only and ignored by physics.
+    const halfW = w / 2;
+    const halfH = h / 2;
+    // Convert SVG x (0..513) to body-local x (-halfW..+halfW), same for y.
+    const sx = (px: number) => -halfW + (px / 513) * w;
+    const sy = (py: number) => -halfH + (py / 70) * h;
+    const verts = [
+      // Rounded-left body (corners are approximated as straight verts;
+      // Matter chamfer fills in the visual roundness but here we just
+      // need a convex-ish silhouette for collision).
+      { x: sx(0), y: sy(8) },
+      { x: sx(8), y: sy(0) },
+      { x: sx(93), y: sy(0) },
+      // Skip the decorative notches — collide as a straight body→tip edge.
+      { x: sx(117), y: sy(0) },
+      // Tip taper: top edge into apex
+      { x: sx(427), y: sy(0) },
+      { x: sx(513), y: sy(35) },
+      // Tip taper: apex back down to bottom edge
+      { x: sx(427), y: sy(70) },
+      { x: sx(117), y: sy(70) },
+      { x: sx(93), y: sy(70) },
+      { x: sx(8), y: sy(70) },
+      { x: sx(0), y: sy(62) },
+    ];
+    const body = Matter.Bodies.fromVertices(x, y, [verts], bodyOpts);
+    if (body) return body;
+    return Matter.Bodies.rectangle(x, y, w, h, { ...bodyOpts, chamfer: { radius: 8 } });
+  }
+
+  if (panel.shape === 'dumbbell') {
+    // Dumbbell: two rounded rects connected by a narrow bridge.
+    // Reference SVG: 222×308 — top rect 0..222 (~72%), bridge 222..246 (~8%),
+    // bottom rect 246..308 (~20%). Bridge waist pinches inward (~75% of full
+    // width). The connector notch in the top edge is too small to model in
+    // the physics body — collisions there will be approximate.
+    const halfW = w / 2;
+    const halfH = h / 2;
+    const topH = h * (222 / 308);
+    const bridgeH = h * (24 / 308);
+    const bridgeW = w * 0.75;
     const verts = [
       // Top section
       { x: -halfW, y: -halfH },
@@ -321,6 +447,26 @@ export const BANNER_SVG_PATH = [
   'L106.322 1.510Z',
 ].join('');
 
+// Mushroom panel (Forest Tone): one closed path tracing a wide rounded cap
+// Mushroom — small 74×80 connector shape. Wide rounded cap (y=0..37), narrow
+// stem (y=37..74) with two small downward pegs at y=74..79 (x=21..23 and
+// x=51..52) intended to slot into the connector notch on the shape panel.
+// Drawn from the user-supplied SVG (fill-rule: nonzero).
+export const MUSHROOM_SVG_PATH = "M37.2192 0.000976562H37.2212C56.7051 0.114759 72.6286 15.2572 73.9937 34.4268C74.0985 35.8998 72.8918 37.1015 71.4155 37.1016H51.3862C49.6097 37.1016 48.3278 38.8032 48.8169 40.5117L59.9624 65.4746C61.185 69.7459 57.979 74 53.5376 74H51.9976C51.4453 74 50.9976 74.4477 50.9976 75V79C50.9976 79.5523 50.5499 80 49.9976 80H23.9976C23.4453 80 22.9976 79.5523 22.9976 79V75C22.9976 74.4477 22.5499 74 21.9976 74H20.9028C16.4615 73.9999 13.2564 69.7459 14.479 65.4746L25.6245 40.5117C26.1136 38.8032 24.8308 37.1016 23.0542 37.1016H2.58448C1.10824 37.1015 -0.0985257 35.8998 0.00635843 34.4268C1.37659 15.1847 17.4162 3.06858e-05 37.0005 0C37.0734 3.69803e-06 37.1464 0.000552551 37.2192 0.000976562Z";
+
+// Square sound-profile connector — 74×80. Rounded square body (74×74, r=8)
+// with a single 28×6 peg at the bottom edge (x=22.998..50.998, y=74..80).
+// Same snap target geometry as the mushroom (shoulders at child-local y=74).
+// Path supplied verbatim by the user.
+export const SQUARE_TONE_SVG_PATH = "M66 0C70.4183 0 74 3.58172 74 8V66C74 70.4183 70.4183 74 66 74H51.998C51.4458 74 50.998 74.4477 50.998 75V79C50.998 79.5521 50.5501 79.9997 49.998 80H23.998C23.4458 80 22.998 79.5523 22.998 79V75C22.998 74.4479 22.5501 74.0003 21.998 74H8C3.58172 74 1.04695e-07 70.4183 0 66V8C0 3.58172 3.58172 1.04692e-07 8 0H66Z";
+
+// Pencil tool panel (redesigned): 513×70 horizontal pencil silhouette —
+// flat-left rounded body (x=0..93, 8px radius) with two decorative-only
+// circular notches centered at (101, 8) and (101, 62) at the body→tip seam,
+// then a long tapered point ending at (513, 35). Path supplied verbatim by
+// the user. Notches are PURELY decorative — no snap behavior.
+export const PENCIL_TOOL_SVG_PATH = "M85 0C89.4183 0 93 3.58172 93 8V7.97656C93 12.3948 96.5817 15.9766 101 15.9766C105.418 15.9766 109 12.3948 109 7.97656C109 3.57123 112.571 0 116.977 0H427.175C430.727 2.98099e-05 434.18 0.589451 436.988 1.67578L506.79 28.6758C515.07 31.8785 515.07 38.1215 506.79 41.3242L436.988 68.3242C434.18 69.4106 430.727 70 427.175 70H116.977C112.571 70 109 66.4288 109 62.0234C109 57.6052 105.418 54.0234 101 54.0234C96.5817 54.0234 93 57.6052 93 62.0234V62C93 66.4183 89.4183 70 85 70H8C3.58172 70 0 66.4183 0 62V8C0 3.58172 3.58172 0 8 0H85Z";
+
 // Dumbbell panel: single unified SVG path — two rounded rects connected by a
 // bridge with circular notches on each side. ViewBox 0 0 222 302.
 // Top section: y 0–224 (r=8). Bridge: y 224–240 (16px tall, circular notches r=8).
@@ -328,45 +474,13 @@ export const BANNER_SVG_PATH = [
 // 206px wide centered (inset 8px each side), matching the Figma Union SVG.
 // The notch is a semicircle: from the bottom of the top rect's corner, arcing
 // inward 8px then back out to the top of the bottom rect's corner.
-export const DUMBBELL_SVG_PATH =[
-  // Top-left corner
-  'M8 0',
-  'C3.582 0 0 3.582 0 8',
-  // Left side of top rect down to bottom-left corner
-  'V216',
-  'C0 220.418 3.582 224 8 224',
-  // Bottom edge of top rect to right
-  'H214',
-  'C218.418 224 222 220.418 222 216',
-  // Right side of top rect up to top-right corner
-  'V8',
-  'C222 3.582 218.418 0 214 0',
-  // Top edge back to start
-  'H8 Z',
-  // Bottom rect as separate subpath
-  'M8 240',
-  'C3.582 240 0 243.582 0 248',
-  // Left side of bottom rect
-  'V294',
-  'C0 298.418 3.582 302 8 302',
-  // Bottom edge
-  'H214',
-  'C218.418 302 222 298.418 222 294',
-  // Right side of bottom rect
-  'V248',
-  'C222 243.582 218.418 240 214 240',
-  'H8 Z',
-  // Bridge connector (Union shape) — centered at x=8, y=224, 206x16
-  // The connector path: starts at right (x=214, y=224), goes left, with
-  // semicircular notches biting inward on each side
-  'M214 224',
-  'C209.582 224 206 227.582 206 232',  // right notch: arc inward
-  'C206 236.418 209.582 240 214 240',  // right notch: arc back out
-  'H8',                                  // bottom edge to left
-  'C12.418 240 16 236.418 16 232',      // left notch: arc inward
-  'C16 227.582 12.418 224 8 224',       // left notch: arc back out
-  'H214 Z',                              // top edge back to right
-].join(' ');
+// Dumbbell — single closed path (222×308) provided directly by the user.
+// Top rect (y=0..222) has a small connector notch in the top edge: x=97..125
+// dips inward from y=0 down to y=6 (a rectangular bite out of the top edge).
+// Waist pinches inward at y=222..246 (side notches), bottom rect y=246..308
+// holds the density slider. The notch is reserved for a future feature.
+export const DUMBBELL_SVG_PATH =
+  'M214.412 246.011C218.639 246.225 222 249.72 222 254V300C222 304.418 218.418 308 214 308H8C3.58172 308 0 304.418 0 300V254C0 249.72 3.36114 246.225 7.58789 246.011L8.41211 245.989C12.6389 245.775 16 242.28 16 238C16 233.72 12.6389 230.225 8.41211 230.011L7.58789 229.989C3.36114 229.775 1.0142e-07 226.28 0 222V8C0 3.58172 3.58172 1.04692e-07 8 0H95.998C96.5501 0.000251851 96.998 0.447871 96.998 1V5C96.998 5.55228 97.4458 6 97.998 6H123.998C124.55 5.99975 124.998 5.55213 124.998 5V1C124.998 0.447716 125.446 1.70037e-06 125.998 0H214C218.418 0 222 3.58172 222 8V222C222 226.28 218.639 229.775 214.412 229.989L213.588 230.011C209.361 230.225 206 233.72 206 238C206 242.28 209.361 245.775 213.588 245.989L214.412 246.011Z';
 
 function buildPenPath(w: number, h: number): string {
   const bottomStraight = h - 7.861; // 210.139 - 202.139 = 8 for radius
@@ -393,8 +507,69 @@ function buildPenPath(w: number, h: number): string {
   );
 }
 
+/**
+ * Snap pairs — child panel id → partner panel id.
+ *
+ * The child has a connector peg (mushroom's stem pegs) that mates with a notch
+ * on the partner (shape panel's top connector notch). When the child is dragged
+ * within SNAP_RADIUS of its partner's notch, releasing locks them together with
+ * a rigid pair of Matter constraints. While snapped, dragging the child far
+ * enough (DETACH_RADIUS) tears the constraints down and they become free again.
+ */
+const SNAP_PAIRS: Record<string, string> = {
+  forest: 'shape',
+  'square-tone': 'shape',
+};
+
+const SNAP_RADIUS = 40;     // pointer-up within this distance of snap point → snap
+
+/**
+ * Compute, in world coordinates, the position the child body must occupy so
+ * its connector peg sits perfectly inside the partner's notch.
+ *
+ * Geometry (matches both SVG paths exactly):
+ *   - Mushroom (74×80): peg sticks from y=74 to y=80, between x≈22 and x≈52
+ *     (a 26px-wide × 6px-tall tab). Mushroom shoulders are at y=74.
+ *   - Shape panel (222×308): notch dips from y=0 to y=6, between x≈98 and
+ *     x≈126 (a 28px-wide × 6px-deep socket). Panel top edge is y=0.
+ *
+ * For a clean silhouette, the mushroom shoulders (mushroom y=74) must rest
+ * exactly on the panel's top edge (panel y=0), which puts the peg's bottom
+ * (mushroom y=80) exactly at the panel notch's bottom (panel y=6) — no gap,
+ * no overlap, the two shapes form one continuous body.
+ */
+function computeSnapPosition(
+  partnerBody: Matter.Body,
+  childPanel: PanelDef,
+  partnerPanel: PanelDef,
+): { x: number; y: number } {
+  const partnerHalfH = partnerPanel.height / 2;
+  const childHalfH = childPanel.height / 2;
+  // The mushroom's shoulders (child-local y=74) must sit on the partner's
+  // top edge (partner-local y=0). Express the child's center in the
+  // partner's LOCAL frame, then rotate by the partner's angle so the
+  // mushroom follows the partner as it tumbles around the screen.
+  const SHOULDER_Y_IN_CHILD = 74;
+  const shoulderOffsetFromChildCenter = SHOULDER_Y_IN_CHILD - childHalfH; // 34
+  // Local-frame position of the child's center, relative to partner center:
+  //   x: 0 (centered horizontally on the panel)
+  //   y: -(partnerHalfH + shoulderOffsetFromChildCenter) — sits above panel top
+  const localX = 0;
+  const localY = -(partnerHalfH + shoulderOffsetFromChildCenter);
+  // Rotate by partner's angle so the offset tracks the panel's rotation.
+  const a = partnerBody.angle;
+  const cos = Math.cos(a);
+  const sin = Math.sin(a);
+  const worldDx = localX * cos - localY * sin;
+  const worldDy = localX * sin + localY * cos;
+  return {
+    x: partnerBody.position.x + worldDx,
+    y: partnerBody.position.y + worldDy,
+  };
+}
+
 function PhysicsPanelsInner(
-  { panels, containerWidth, containerHeight, drawerOpen, drawerRightEdge, onPanelDroppedInDrawer }: PhysicsPanelsProps,
+  { panels, containerWidth, containerHeight, drawerOpen, drawerRightEdge, onPanelDroppedInDrawer, onSnapChange }: PhysicsPanelsProps,
   ref: React.Ref<PhysicsPanelsHandle>
 ) {
   const engineRef = useRef<Matter.Engine | null>(null);
@@ -406,6 +581,15 @@ function PhysicsPanelsInner(
   const dragRef = useRef<{ id: string; constraint: Matter.Constraint } | null>(null);
   const mouseBodyRef = useRef<Matter.Body | null>(null);
   const wakeRef = useRef<() => void>(() => {});
+  // Snapped pairs — maps a child panel id (the mushroom) to its partner.
+  // While snapped, every physics tick we hard-position the child to track the
+  // partner's body so the pair behaves as one rigid unit. We do NOT use
+  // Matter constraints — they oscillate at this stiffness. Direct position
+  // tracking is rock-solid and guarantees the visual seam stays clean.
+  const snappedRef = useRef<Map<string, { partnerId: string }>>(new Map());
+  // Mirror of snappedRef in React state so we can re-render the UI (data-snapped
+  // attribute) when pairs form/break.
+  const [snappedSet, setSnappedSet] = useState<Set<string>>(new Set());
   const wallsRef = useRef<{ floor: Matter.Body; ceiling: Matter.Body; left: Matter.Body; right: Matter.Body; drawer: Matter.Body } | null>(null);
   // Keep latest props accessible via refs to avoid stale closures
   const panelsRef = useRef(panels);
@@ -420,6 +604,8 @@ function PhysicsPanelsInner(
   drawerRightEdgeRef.current = drawerRightEdge;
   const onPanelDroppedInDrawerRef = useRef(onPanelDroppedInDrawer);
   onPanelDroppedInDrawerRef.current = onPanelDroppedInDrawer;
+  const onSnapChangeRef = useRef(onSnapChange);
+  onSnapChangeRef.current = onSnapChange;
 
   // Initialize physics engine once
   useEffect(() => {
@@ -487,6 +673,21 @@ function PhysicsPanelsInner(
       const delta = Math.min(now - lastTime, 32);
       lastTime = now;
       Matter.Engine.update(engine, delta);
+
+      // Snap tracker: every tick, position the static child so its peg stays
+      // seated in the partner's notch — accounting for the partner's current
+      // rotation so the pair tumbles together as one rigid unit. The partner
+      // keeps full physics (drag, throw, tilt, bounce); the child rides along.
+      for (const [childId, pair] of snappedRef.current) {
+        const childBody = bodiesRef.current.get(childId);
+        const partnerBody = bodiesRef.current.get(pair.partnerId);
+        const childPanel = panelsRef.current.find((p) => p.id === childId);
+        const partnerPanel = panelsRef.current.find((p) => p.id === pair.partnerId);
+        if (!childBody || !partnerBody || !childPanel || !partnerPanel) continue;
+        const target = computeSnapPosition(partnerBody, childPanel, partnerPanel);
+        Matter.Body.setPosition(childBody, target);
+        Matter.Body.setAngle(childBody, partnerBody.angle);
+      }
 
       const curW = containerWidthRef.current;
       const curH = containerHeightRef.current;
@@ -613,6 +814,13 @@ function PhysicsPanelsInner(
 
     for (const [id, body] of bodiesRef.current) {
       if (!panelIds.has(id)) {
+        // Break any snap involving the removed panel — both as child and
+        // as partner — before tearing down its body, otherwise the constraint
+        // would dangle.
+        if (snappedRef.current.has(id)) breakSnap(id);
+        for (const [childId, pair] of snappedRef.current) {
+          if (pair.partnerId === id) breakSnap(childId);
+        }
         Matter.Composite.remove(engine.world, body);
         bodiesRef.current.delete(id);
         panelRefs.current.delete(id);
@@ -684,6 +892,84 @@ function PhysicsPanelsInner(
     },
   }));
 
+  // Tear down the snap between a child and its partner. The child returns to
+  // dynamic physics. Used when the user pulls a snapped child away or when
+  // one of the panels gets stored in the drawer.
+  const breakSnap = useCallback((childId: string) => {
+    const childBody = bodiesRef.current.get(childId);
+    const pair = snappedRef.current.get(childId);
+    const partnerBody = pair ? bodiesRef.current.get(pair.partnerId) : null;
+    if (childBody && childBody.isStatic) {
+      Matter.Body.setStatic(childBody, false);
+      Matter.Body.setVelocity(childBody, { x: 0, y: 0 });
+      Matter.Body.setAngularVelocity(childBody, 0);
+    }
+    // Restore default collision filter on both bodies so they collide with
+    // everything again.
+    if (childBody) {
+      childBody.collisionFilter = { ...childBody.collisionFilter, group: 0 };
+    }
+    if (partnerBody) {
+      partnerBody.collisionFilter = { ...partnerBody.collisionFilter, group: 0 };
+    }
+    snappedRef.current.delete(childId);
+    setSnappedSet((prev) => {
+      const next = new Set(prev);
+      next.delete(childId);
+      return next;
+    });
+    onSnapChangeRef.current?.(childId, null);
+    wakeRef.current();
+  }, []);
+
+  // Lock a child onto its partner: place it precisely in the snap position,
+  // make it static, and let the per-tick tracker keep it glued to the partner
+  // as the partner moves. This is more reliable than Matter constraints
+  // (zero oscillation, exact pixel placement, predictable behavior).
+  const formSnap = useCallback((childId: string, partnerId: string) => {
+    const engine = engineRef.current;
+    const childBody = bodiesRef.current.get(childId);
+    const partnerBody = bodiesRef.current.get(partnerId);
+    const childPanel = panelsRef.current.find((p) => p.id === childId);
+    const partnerPanel = panelsRef.current.find((p) => p.id === partnerId);
+    if (!engine || !childBody || !partnerBody || !childPanel || !partnerPanel) return;
+
+    // Straighten the partner so the snap target is calculated correctly. The
+    // child gets straightened too — peg only mates cleanly when both are level.
+    Matter.Body.setAngle(partnerBody, 0);
+    Matter.Body.setAngularVelocity(partnerBody, 0);
+    Matter.Body.setVelocity(partnerBody, { x: 0, y: 0 });
+    Matter.Body.setAngle(childBody, 0);
+    Matter.Body.setAngularVelocity(childBody, 0);
+    Matter.Body.setVelocity(childBody, { x: 0, y: 0 });
+
+    const snapPos = computeSnapPosition(partnerBody, childPanel, partnerPanel);
+    Matter.Body.setPosition(childBody, snapPos);
+    // Make the child static — its position is now derived from the partner
+    // every tick (see the snap-tracking loop in the physics step).
+    Matter.Body.setStatic(childBody, true);
+
+    // Disable collision between the two snapped bodies. The mushroom peg
+    // overlaps the panel notch by design, and without this the dynamic
+    // partner gets shoved away from the static child every tick — sinking
+    // the panel toward the bottom of the screen. Negative-valued groups in
+    // Matter never collide with each other, so a unique pair group isolates
+    // this pair without affecting how either body collides with the rest of
+    // the world.
+    const pairGroup = -(Date.now() & 0x7fffffff);
+    childBody.collisionFilter = { ...childBody.collisionFilter, group: pairGroup };
+    partnerBody.collisionFilter = { ...partnerBody.collisionFilter, group: pairGroup };
+
+    snappedRef.current.set(childId, { partnerId });
+    setSnappedSet((prev) => {
+      const next = new Set(prev);
+      next.add(childId);
+      return next;
+    });
+    onSnapChangeRef.current?.(childId, partnerId);
+    wakeRef.current();
+  }, []);
+
   const handleDragStart = useCallback((e: React.PointerEvent, panelId: string) => {
     // Only start drag on a real press — button 0 (left mouse/trackpad) with buttons bit set.
     // This ignores spurious pointerdown events from trackpad hovers / force touch.
@@ -701,6 +987,14 @@ function PhysicsPanelsInner(
     const body = bodiesRef.current.get(panelId);
     const mouseBody = mouseBodyRef.current;
     if (!engine || !body || !mouseBody) return;
+
+    // If this panel is currently snapped to a partner, grabbing it immediately
+    // detaches the snap. The body becomes dynamic again so the mouse drag
+    // constraint can move it. (Without this, the body stays static and the
+    // user gets a frozen panel that ignores the mouse.)
+    if (snappedRef.current.has(panelId)) {
+      breakSnap(panelId);
+    }
 
     Matter.Body.setPosition(mouseBody, { x: e.clientX, y: e.clientY - 44 });
 
@@ -724,7 +1018,7 @@ function PhysicsPanelsInner(
     dragRef.current = { id: panelId, constraint };
     setDraggingPanelId(panelId);
     wakeRef.current();
-  }, [pinned]);
+  }, [pinned, breakSnap]);
 
   // Window-level drag listeners — installed only while a drag is active.
   // Using window events (instead of setPointerCapture on the panel) avoids
@@ -792,8 +1086,27 @@ function PhysicsPanelsInner(
 
     Matter.Composite.remove(engineRef.current.world, dragRef.current.constraint);
     dragRef.current = null;
+
+    // Attempt to snap onto a partner if this panel has one defined and the
+    // child's peg is close enough to the partner's notch. Skipped if the
+    // child is already snapped (still attached from a prior interaction).
+    const partnerId = SNAP_PAIRS[panelId];
+    if (partnerId && body && !snappedRef.current.has(panelId)) {
+      const partnerBody = bodiesRef.current.get(partnerId);
+      const childPanel = panelsRef.current.find((p) => p.id === panelId);
+      const partnerPanel = panelsRef.current.find((p) => p.id === partnerId);
+      if (partnerBody && childPanel && partnerPanel) {
+        const target = computeSnapPosition(partnerBody, childPanel, partnerPanel);
+        const dx = body.position.x - target.x;
+        const dy = body.position.y - target.y;
+        if (Math.hypot(dx, dy) < SNAP_RADIUS) {
+          formSnap(panelId, partnerId);
+        }
+      }
+    }
+
     wakeRef.current();
-  }, []); // No deps — uses refs for all external values
+  }, [formSnap]);
 
   const handleTogglePin = useCallback((e: React.MouseEvent, panelId: string) => {
     e.preventDefault();
@@ -822,7 +1135,10 @@ function PhysicsPanelsInner(
         const isOnion = panel.shape === 'onion';
         const isPencil = panel.shape === 'pencil';
         const isBanner = panel.shape === 'banner';
+        const isPencilTool = panel.shape === 'pencil-tool';
         const isTriangle = panel.shape === 'triangle';
+        const isMushroom = panel.shape === 'mushroom';
+        const isSquareTone = panel.shape === 'square-tone';
         const panelDragProps = {
           onPointerDown: (e: React.PointerEvent) => handleDragStart(e, panel.id),
           onContextMenu: (e: React.MouseEvent) => handleTogglePin(e, panel.id),
@@ -884,6 +1200,117 @@ function PhysicsPanelsInner(
               </svg>
               <div className="canvas-panel-label">CANVAS</div>
               <div className="canvas-panel-body">{panel.children}</div>
+            </div>
+          );
+        }
+
+        if (isMushroom) {
+          const w = panel.width;
+          const h = panel.height;
+          // When snapped to a partner, swap the solid mushroom fill for a
+          // vertical gradient that blends into the partner's color at the
+          // bottom (peg) edge, so the two shapes read as one continuous body.
+          const isSnapped = snappedSet.has(panel.id);
+          const partnerId = SNAP_PAIRS[panel.id];
+          const partnerColor = partnerId
+            ? panelsRef.current.find((p) => p.id === partnerId)?.color
+            : undefined;
+          const gradientId = `mushroom-grad-${panel.id}`;
+          return (
+            <div
+              key={panel.id}
+              ref={(el) => { panelRefs.current.set(panel.id, el); }}
+              className="floating-panel mushroom-panel"
+              data-snapped={isSnapped ? 'true' : undefined}
+              {...panelDragProps}
+              style={{
+                ...panelDragProps.style,
+                width: w,
+                height: h,
+                transformOrigin: 'center center',
+                pointerEvents: 'auto',
+                zIndex: panelZIndex,
+              }}
+            >
+              <svg
+                width={w}
+                height={h}
+                viewBox="0 0 74 80"
+                preserveAspectRatio="none"
+                style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+              >
+                {isSnapped && partnerColor && (
+                  <defs>
+                    <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={panel.color} />
+                      <stop offset="55%" stopColor={panel.color} />
+                      <stop offset="100%" stopColor={partnerColor} />
+                    </linearGradient>
+                  </defs>
+                )}
+                <path
+                  d={MUSHROOM_SVG_PATH}
+                  fill={isSnapped && partnerColor ? `url(#${gradientId})` : panel.color}
+                />
+              </svg>
+              <div className="mushroom-header">
+                <span className="mushroom-title">{panel.title}</span>
+              </div>
+              <div className="mushroom-body">{panel.children}</div>
+            </div>
+          );
+        }
+
+        if (isSquareTone) {
+          const w = panel.width;
+          const h = panel.height;
+          // Same snap-aware visual treatment as the mushroom: when snapped,
+          // swap the solid fill for a vertical gradient that resolves into
+          // the partner's color at the peg, so the seam reads as one body.
+          const isSnapped = snappedSet.has(panel.id);
+          const partnerId = SNAP_PAIRS[panel.id];
+          const partnerColor = partnerId
+            ? panelsRef.current.find((p) => p.id === partnerId)?.color
+            : undefined;
+          const gradientId = `square-tone-grad-${panel.id}`;
+          return (
+            <div
+              key={panel.id}
+              ref={(el) => { panelRefs.current.set(panel.id, el); }}
+              className="floating-panel square-tone-panel"
+              data-snapped={isSnapped ? 'true' : undefined}
+              {...panelDragProps}
+              style={{
+                ...panelDragProps.style,
+                width: w,
+                height: h,
+                transformOrigin: 'center center',
+                pointerEvents: 'auto',
+                zIndex: panelZIndex,
+              }}
+            >
+              <svg
+                width={w}
+                height={h}
+                viewBox="0 0 74 80"
+                preserveAspectRatio="none"
+                style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+              >
+                {isSnapped && partnerColor && (
+                  <defs>
+                    <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={panel.color} />
+                      <stop offset="55%" stopColor={panel.color} />
+                      <stop offset="100%" stopColor={partnerColor} />
+                    </linearGradient>
+                  </defs>
+                )}
+                <path
+                  d={SQUARE_TONE_SVG_PATH}
+                  fill={isSnapped && partnerColor ? `url(#${gradientId})` : panel.color}
+                />
+              </svg>
+              <div className="square-tone-body">{panel.children}</div>
             </div>
           );
         }
@@ -990,6 +1417,59 @@ function PhysicsPanelsInner(
           );
         }
 
+        if (isPencilTool) {
+          const w = panel.width;
+          const h = panel.height;
+          // Unique gradient id per panel instance so multiple pencil-tools
+          // (e.g. floating + drawer preview) don't collide in the SVG defs.
+          const gradId = `pencil-tool-grad-${panel.id}`;
+          return (
+            <div
+              key={panel.id}
+              ref={(el) => { panelRefs.current.set(panel.id, el); }}
+              className="floating-panel pencil-tool-panel"
+              {...panelDragProps}
+              style={{
+                ...panelDragProps.style,
+                width: w,
+                height: h,
+                transformOrigin: 'center center',
+                pointerEvents: 'auto',
+                zIndex: panelZIndex,
+              }}
+            >
+              <svg
+                width={w}
+                height={h}
+                viewBox="0 0 513 70"
+                preserveAspectRatio="none"
+                style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+              >
+                <defs>
+                  {/* Pink hotspot at the tip (x=460), fading to transparent
+                      over a 186.5 radius — verbatim from Figma SVG. */}
+                  <radialGradient
+                    id={gradId}
+                    cx="0"
+                    cy="0"
+                    r="1"
+                    gradientUnits="userSpaceOnUse"
+                    gradientTransform="translate(460 35) rotate(180) scale(186.5 186.5)"
+                  >
+                    <stop stopColor="#FF92BE" />
+                    <stop offset="1" stopColor="#FF92BE" stopOpacity="0" />
+                  </radialGradient>
+                </defs>
+                {/* Base orange */}
+                <path d={PENCIL_TOOL_SVG_PATH} fill={panel.color} />
+                {/* Pink gradient overlay */}
+                <path d={PENCIL_TOOL_SVG_PATH} fill={`url(#${gradId})`} />
+              </svg>
+              <div className="pencil-tool-body">{panel.children}</div>
+            </div>
+          );
+        }
+
         if (isPencil) {
           const w = panel.width;
           const h = panel.height;
@@ -1061,11 +1541,27 @@ function PhysicsPanelsInner(
         if (isDumbbell) {
           const w = panel.width;
           const h = panel.height;
+          // Find any snapped child whose partner is THIS dumbbell — used to
+          // tint the top notch area with the child's color so the visual
+          // blend is symmetric on both sides of the seam.
+          let partnerChildColor: string | undefined;
+          for (const childId of snappedSet) {
+            if (SNAP_PAIRS[childId] === panel.id) {
+              const childPanel = panelsRef.current.find((p) => p.id === childId);
+              if (childPanel) {
+                partnerChildColor = childPanel.color;
+                break;
+              }
+            }
+          }
+          const isSnapped = !!partnerChildColor;
+          const dumbbellGradId = `dumbbell-grad-${panel.id}`;
           return (
             <div
               key={panel.id}
               ref={(el) => { panelRefs.current.set(panel.id, el); }}
               className="floating-panel dumbbell-panel"
+              data-snapped={isSnapped ? 'true' : undefined}
               {...panelDragProps}
               style={{
                 ...panelDragProps.style,
@@ -1079,11 +1575,26 @@ function PhysicsPanelsInner(
               <svg
                 width={w}
                 height={h}
-                viewBox="0 0 222 302"
+                viewBox="0 0 222 308"
                 preserveAspectRatio="none"
                 style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
               >
-                <path d={DUMBBELL_SVG_PATH} fill={panel.color} />
+                {isSnapped && partnerChildColor && (
+                  <defs>
+                    {/* Top-edge tint: brown (partner child color) bleeds in from
+                        y=0 down to ~y=32, then resolves to the dumbbell color. */}
+                    <linearGradient id={dumbbellGradId} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={partnerChildColor} />
+                      <stop offset="6%" stopColor={partnerChildColor} />
+                      <stop offset="14%" stopColor={panel.color} />
+                      <stop offset="100%" stopColor={panel.color} />
+                    </linearGradient>
+                  </defs>
+                )}
+                <path
+                  d={DUMBBELL_SVG_PATH}
+                  fill={isSnapped && partnerChildColor ? `url(#${dumbbellGradId})` : panel.color}
+                />
               </svg>
               <div className="dumbbell-header">
                 <span className="dumbbell-title">{panel.title}</span>

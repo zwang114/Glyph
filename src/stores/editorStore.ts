@@ -16,6 +16,11 @@ interface EditorState {
   isDrawing: boolean;
   drawValue: boolean;
   brushSize: number; // cells per side of the brush stamp
+  /**
+   * Forest tone — global ambient layer (planned). The control is currently
+   * UI-only; wiring it to actual audio will happen in a follow-up.
+   */
+  forestToneEnabled: boolean;
 }
 
 interface EditorActions {
@@ -26,6 +31,7 @@ interface EditorActions {
   setDrawValue: (value: boolean) => void;
   setBrushSize: (value: number) => void;
   stepBrushSize: (dir: 1 | -1) => void;
+  setForestToneEnabled: (enabled: boolean) => void;
 }
 
 type EditorStore = EditorState & EditorActions;
@@ -37,6 +43,7 @@ export const useEditorStore = create<EditorStore>()((set) => ({
   isDrawing: false,
   drawValue: true,
   brushSize: 1,
+  forestToneEnabled: false,
 
   setTool: (tool) => set({ activeTool: tool }),
   toggleGrid: () => set((s) => ({ showGrid: !s.showGrid })),
@@ -51,4 +58,5 @@ export const useEditorStore = create<EditorStore>()((set) => ({
       const next = Math.max(0, Math.min(BRUSH_SIZE_STEPS.length - 1, curIdx + dir));
       return { brushSize: BRUSH_SIZE_STEPS[next] };
     }),
+  setForestToneEnabled: (enabled) => set({ forestToneEnabled: enabled }),
 }));

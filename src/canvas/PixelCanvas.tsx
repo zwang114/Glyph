@@ -49,6 +49,10 @@ const FLASH_DURATION_MS = FLASH_HOLD_MS + FLASH_FADE_MS;
 const RESIZE_EDGE_HIT = 6;
 const RESIZE_CORNER_HIT = 8;
 
+// Flash map integer key encoding: row * FLASH_KEY_COLS + col.
+// Must be >= max supported grid width (we use 1024 to be safe).
+const FLASH_KEY_COLS = 1024;
+
 type PlusDir = 'up' | 'down' | 'left' | 'right';
 type ResizeHandle = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
@@ -121,17 +125,18 @@ export function PixelCanvas() {
   // Cached per-frame bounds for hit-testing (recomputed on each draw)
   const frameBoundsRef = useRef<FrameBounds[]>([]);
 
-  // Playback flash state — per canvas, a map of cell key → flash start time
-  // (performance.now()). Pixels with an entry here are rendered as a lerp
-  // from orange → black based on elapsed time.
-  const flashMapRef = useRef<Map<string, Map<string, number>>>(new Map());
-  // Last integer column each canvas's playhead was seen at, to detect when
-  // the playhead enters a new column so we can re-fire flashes on that col.
+  // ── Single unified rAF loop ──────────────────────────────────────
+  // All redraws go through one rAF. Store subscriptions set `dirtyRef`
+  // instead of scheduling their own rAF, eliminating multi-draw-per-frame.
+  const dirtyRef = useRef(false);
+  // The single rAF handle — 0 means not scheduled.
+  // (rafRef is still used for the main loop id)
+
+  // Playback flash state — per canvas, a map of integer key → flash start.
+  // Key encoding: row * FLASH_KEY_COLS + col (avoids per-pixel string alloc).
+  const flashMapRef = useRef<Map<string, Map<number, number>>>(new Map());
+  // Last integer column each canvas's playhead was seen at.
   const prevFlooredColRef = useRef<Map<string, number>>(new Map());
-  // rAF loop id for flash animation (independent of store-subscription
-  // redraws — flashes need to re-render even when nothing in the store
-  // changes, until every flash has finished fading).
-  const flashRafRef = useRef<number>(0);
 
   // ───────────────────────────────────────────────────────────────────
   // Coordinate helpers
@@ -450,20 +455,20 @@ export function PixelCanvas() {
         ctx.clip();
         ctx.globalCompositeOperation = 'difference';
         ctx.fillStyle = GRID_DOT_COLOR;
+        // All dots batched into a single path — one fill() call instead of
+        // one per dot. On a 24×32 canvas this drops ~800 draw calls to 1.
         const dotRadius = 1;
-        // Dots sit at cell corners anchored to the top-left of the canvas,
-        // matching the pixel-cell grid exactly. This keeps dots aligned
-        // with cell boundaries regardless of grid parity after resize.
-        // Grid density is fixed — it represents the canvas's own cell grid
-        // and is intentionally independent of the current brush size.
         const step = b.cellSize;
+        ctx.beginPath();
         for (let y = b.y; y <= b.y + b.h + 0.5; y += step) {
           for (let x = b.x; x <= b.x + b.w + 0.5; x += step) {
-            ctx.beginPath();
-            ctx.arc(Math.round(x), Math.round(y), dotRadius, 0, Math.PI * 2);
-            ctx.fill();
+            const rx = Math.round(x);
+            const ry = Math.round(y);
+            ctx.moveTo(rx + dotRadius, ry);
+            ctx.arc(rx, ry, dotRadius, 0, Math.PI * 2);
           }
         }
+        ctx.fill();
         ctx.restore();
       }
 
@@ -493,47 +498,47 @@ export function PixelCanvas() {
       const perCellShapes = frame.pixelShapes;
       const frameFlashMap = flashMapRef.current.get(frame.id);
       const nowMs = performance.now();
+
+      // Color cache: maps tEase (0–255 bucket) → rgb string. Computed once
+      // per unique brightness level per frame, not once per flashing pixel.
+      // Avoids O(pixels) string allocations during playback.
+      const flashColorCache = new Map<number, string>();
+      const getFlashColor = (elapsed: number): string => {
+        let tEase: number;
+        if (elapsed < FLASH_HOLD_MS) {
+          tEase = 0;
+        } else {
+          const tLinear = Math.min(1, (elapsed - FLASH_HOLD_MS) / FLASH_FADE_MS);
+          tEase = 1 - Math.pow(1 - tLinear, 3);
+        }
+        // Bucket to 256 levels so many pixels in the same fade state share
+        // one cached string. With only 256 possible values the cache stays tiny.
+        const bucket = Math.round(tEase * 255);
+        let cached = flashColorCache.get(bucket);
+        if (!cached) {
+          const t = bucket / 255;
+          const rCol = Math.round(FLASH_COLOR.r + (PIXEL_COLOR_RGB.r - FLASH_COLOR.r) * t);
+          const gCol = Math.round(FLASH_COLOR.g + (PIXEL_COLOR_RGB.g - FLASH_COLOR.g) * t);
+          const bCol = Math.round(FLASH_COLOR.b + (PIXEL_COLOR_RGB.b - FLASH_COLOR.b) * t);
+          cached = `rgb(${rCol},${gCol},${bCol})`;
+          flashColorCache.set(bucket, cached);
+        }
+        return cached;
+      };
+
       // Default color for pixels not currently flashing.
       ctx.fillStyle = PIXEL_COLOR;
-      // Each cell renders with its own painted shape; unpainted cells skip.
-      // Legacy cells persisted with the removed 'metaball' value (no longer a
-      // valid PixelShape) fall back to cross so existing work keeps rendering.
       for (let r = 0; r < frame.gridHeight; r++) {
         for (let c = 0; c < frame.gridWidth; c++) {
           if (!frame.pixels[r][c]) continue;
           let cellShape = perCellShapes?.[r]?.[c] ?? frame.pixelShape;
           if ((cellShape as string) === 'metaball') cellShape = 'cross';
 
-          // Flash: full orange during the hold window, then ease-out
-          // lerp to black over the fade window.
-          const flashStart = frameFlashMap?.get(`${r},${c}`);
-          if (flashStart !== undefined) {
-            const elapsed = nowMs - flashStart;
-            let tEase: number;
-            if (elapsed < FLASH_HOLD_MS) {
-              tEase = 0; // held at full orange
-            } else {
-              const tLinear = Math.min(
-                1,
-                (elapsed - FLASH_HOLD_MS) / FLASH_FADE_MS
-              );
-              // Ease-out cubic: fast initial drop, long slow tail.
-              tEase = 1 - Math.pow(1 - tLinear, 3);
-            }
-            // t=0 → full orange; t=1 → full black.
-            const rCol = Math.round(
-              FLASH_COLOR.r + (PIXEL_COLOR_RGB.r - FLASH_COLOR.r) * tEase
-            );
-            const gCol = Math.round(
-              FLASH_COLOR.g + (PIXEL_COLOR_RGB.g - FLASH_COLOR.g) * tEase
-            );
-            const bCol = Math.round(
-              FLASH_COLOR.b + (PIXEL_COLOR_RGB.b - FLASH_COLOR.b) * tEase
-            );
-            ctx.fillStyle = `rgb(${rCol}, ${gCol}, ${bCol})`;
-          } else {
-            ctx.fillStyle = PIXEL_COLOR;
-          }
+          // Integer key lookup — no string allocation.
+          const flashStart = frameFlashMap?.get(r * FLASH_KEY_COLS + c);
+          ctx.fillStyle = flashStart !== undefined
+            ? getFlashColor(nowMs - flashStart)
+            : PIXEL_COLOR;
 
           drawShape(ctx, cellShape, r, c, b.cellSize, frame.pixelDensity, b.x, b.y);
         }
@@ -744,10 +749,10 @@ export function PixelCanvas() {
     [getBrushCells, getMirrorCells, getLineCells, getTabRect, getPlusButtons]
   );
 
+  // Mark the canvas as needing a redraw. The unified rAF loop picks it up.
   const scheduleRedraw = useCallback(() => {
-    cancelAnimationFrame(rafRef.current);
-    rafRef.current = requestAnimationFrame(draw);
-  }, [draw]);
+    dirtyRef.current = true;
+  }, []);
 
   // ───────────────────────────────────────────────────────────────────
   // Canvas resize
@@ -772,117 +777,82 @@ export function PixelCanvas() {
   }, [scheduleRedraw]);
 
   // ───────────────────────────────────────────────────────────────────
-  // Subscribe to stores — redraw on any change
+  // Unified rAF loop + store subscriptions + playback flash tracking
   // ───────────────────────────────────────────────────────────────────
+  // One persistent rAF loop runs for the lifetime of the component.
+  // Store changes set `dirtyRef` (cheap). The loop redraws only when
+  // dirty OR when flashes/playback are active. This prevents multiple
+  // redraws per frame that previously occurred when all three store
+  // subscriptions each scheduled their own rAF.
   useEffect(() => {
-    const unsub1 = useCanvasStore.subscribe(scheduleRedraw);
-    const unsub2 = useEditorStore.subscribe(scheduleRedraw);
-    const unsub3 = useAudioStore.subscribe(scheduleRedraw);
-    return () => {
-      unsub1();
-      unsub2();
-      unsub3();
-    };
-  }, [scheduleRedraw]);
+    // Mark dirty on any store change — no rAF scheduled here.
+    const unsub1 = useCanvasStore.subscribe(() => { dirtyRef.current = true; });
+    const unsub2 = useEditorStore.subscribe(() => { dirtyRef.current = true; });
+    const unsub3 = useAudioStore.subscribe(() => { dirtyRef.current = true; });
 
-  // ───────────────────────────────────────────────────────────────────
-  // Playback flash: when the playhead enters a new column, every filled
-  // pixel in that column starts a 400ms fade from orange back to black.
-  // ───────────────────────────────────────────────────────────────────
-  useEffect(() => {
+    // Track playhead column entries to fire flash events.
     const checkPlayhead = () => {
       const audio = useAudioStore.getState();
       const canvasState = useCanvasStore.getState();
-
       if (!audio.isPlaying) {
-        // Drop any lingering "new column" tracking so when playback restarts
-        // from col 0, we treat it as a fresh entry (fires flashes again).
         prevFlooredColRef.current.clear();
         return;
       }
-
       for (const [canvasId, rawCol] of Object.entries(audio.playheadCols)) {
         const frame = canvasState.canvases[canvasId];
         if (!frame) continue;
-        const col = Math.floor(
-          Math.max(0, Math.min(frame.gridWidth - 1, rawCol))
-        );
+        const col = Math.floor(Math.max(0, Math.min(frame.gridWidth - 1, rawCol)));
         const prev = prevFlooredColRef.current.get(canvasId);
         if (prev === col) continue;
         prevFlooredColRef.current.set(canvasId, col);
-
-        // Playhead just entered a new column — flash every filled pixel.
         const now = performance.now();
         let map = flashMapRef.current.get(canvasId);
-        if (!map) {
-          map = new Map();
-          flashMapRef.current.set(canvasId, map);
-        }
+        if (!map) { map = new Map(); flashMapRef.current.set(canvasId, map); }
         for (let r = 0; r < frame.gridHeight; r++) {
           if (frame.pixels[r]?.[col]) {
-            // Re-setting the key resets the flash to full brightness —
-            // exactly the desired behavior for overlapping hits.
-            map.set(`${r},${col}`, now);
+            map.set(r * FLASH_KEY_COLS + col, now); // integer key — no string alloc
           }
         }
       }
     };
+    const unsub4 = useAudioStore.subscribe(checkPlayhead);
 
-    const unsub = useAudioStore.subscribe(checkPlayhead);
-    // Fire once in case playback is already running when the effect mounts.
-    checkPlayhead();
-    return unsub;
-  }, []);
-
-  // rAF ticker: drives redraws while any flash is in progress OR while
-  // audio is playing (so the playhead itself updates smoothly between
-  // store events). Also prunes expired flash entries.
-  useEffect(() => {
+    // The single rAF loop.
     const tick = () => {
+      rafRef.current = requestAnimationFrame(tick);
       const now = performance.now();
-      let anyActive = false;
 
-      // Prune expired flashes.
+      // Prune expired flashes and check if any are still active.
+      let anyFlash = false;
       for (const [canvasId, map] of flashMapRef.current) {
         for (const [key, startTime] of map) {
           if (now - startTime >= FLASH_DURATION_MS) {
             map.delete(key);
           } else {
-            anyActive = true;
+            anyFlash = true;
           }
         }
         if (map.size === 0) flashMapRef.current.delete(canvasId);
       }
 
       const isPlaying = useAudioStore.getState().isPlaying;
-      if (anyActive || isPlaying) {
-        scheduleRedraw();
-        flashRafRef.current = requestAnimationFrame(tick);
-      } else {
-        flashRafRef.current = 0;
+
+      // Only call draw() when there is something new to show.
+      if (dirtyRef.current || anyFlash || isPlaying) {
+        dirtyRef.current = false;
+        draw();
       }
     };
 
-    // Start the ticker when playback begins; stop when nothing to animate.
-    const startIfNeeded = () => {
-      if (flashRafRef.current) return;
-      const isPlaying = useAudioStore.getState().isPlaying;
-      const hasFlashes = flashMapRef.current.size > 0;
-      if (isPlaying || hasFlashes) {
-        flashRafRef.current = requestAnimationFrame(tick);
-      }
-    };
+    dirtyRef.current = true; // ensure first frame draws
+    rafRef.current = requestAnimationFrame(tick);
 
-    const unsub = useAudioStore.subscribe(startIfNeeded);
-    startIfNeeded();
     return () => {
-      unsub();
-      if (flashRafRef.current) {
-        cancelAnimationFrame(flashRafRef.current);
-        flashRafRef.current = 0;
-      }
+      unsub1(); unsub2(); unsub3(); unsub4();
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = 0;
     };
-  }, [scheduleRedraw]);
+  }, [draw]);
 
   // ───────────────────────────────────────────────────────────────────
   // Keyboard: spacebar to pan, escape to deselect, delete to remove

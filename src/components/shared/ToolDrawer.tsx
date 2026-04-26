@@ -7,9 +7,12 @@ import {
   CANVAS_SVG_PATH,
   ONION_SVG_PATH_V2,
   PENCIL_SVG_PATH,
+  PENCIL_TOOL_SVG_PATH,
   BANNER_SVG_PATH,
   DUMBBELL_SVG_PATH,
   TRIANGLE_SVG_PATH,
+  MUSHROOM_SVG_PATH,
+  SQUARE_TONE_SVG_PATH,
 } from './PhysicsPanels';
 
 interface ToolDrawerProps {
@@ -27,9 +30,12 @@ const SHAPE_SVGS: Record<string, { path: string; viewBox: string }> = {
   canvas:   { path: CANVAS_SVG_PATH,   viewBox: '0 0 228 106' },
   onion:    { path: ONION_SVG_PATH_V2, viewBox: '0 0 320 225' },
   pencil:   { path: PENCIL_SVG_PATH,   viewBox: '0 0 222 353' },
+  'pencil-tool': { path: PENCIL_TOOL_SVG_PATH, viewBox: '0 0 513 70' },
   banner:   { path: BANNER_SVG_PATH,   viewBox: '0 0 222 227' },
-  dumbbell: { path: DUMBBELL_SVG_PATH, viewBox: '0 0 222 302' },
+  dumbbell: { path: DUMBBELL_SVG_PATH, viewBox: '0 0 222 308' },
   triangle: { path: TRIANGLE_SVG_PATH, viewBox: '0 0 222 200' },
+  mushroom: { path: MUSHROOM_SVG_PATH, viewBox: '0 0 74 80' },
+  'square-tone': { path: SQUARE_TONE_SVG_PATH, viewBox: '0 0 74 80' },
 };
 
 function getShapeSvgInfo(shape?: string) {
@@ -214,6 +220,8 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
         if (panel.shape === 'pill') chamferRadius = Math.min(panel.width, panel.height) / 2 - 1;
         else if (panel.shape === 'onion') chamferRadius = Math.min(panel.width, panel.height) / 3;
         else if (panel.shape === 'banner' || panel.shape === 'pencil') chamferRadius = 8;
+        else if (panel.shape === 'pencil-tool') chamferRadius = 8;
+        else if (panel.shape === 'square-tone') chamferRadius = 8;
 
         const body = Matter.Bodies.rectangle(x, y, panel.width, panel.height, {
           ...bodyOpts,
@@ -526,6 +534,10 @@ function DrawerPanelShape({ panel }: { panel: PanelDef }) {
 
   const shapeClass = panel.shape ? `${panel.shape}-panel` : '';
   const innerContent = renderShapeInner(panel);
+  const isPencilTool = panel.shape === 'pencil-tool';
+  // Stable but unique gradient id for the drawer preview so it doesn't
+  // clash with the floating render's gradient id.
+  const gradId = `pencil-tool-grad-drawer-${panel.id}`;
 
   return (
     <div
@@ -540,7 +552,23 @@ function DrawerPanelShape({ panel }: { panel: PanelDef }) {
           preserveAspectRatio="none"
           style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
         >
+          {isPencilTool && (
+            <defs>
+              <radialGradient
+                id={gradId}
+                cx="0"
+                cy="0"
+                r="1"
+                gradientUnits="userSpaceOnUse"
+                gradientTransform="translate(460 35) rotate(180) scale(186.5 186.5)"
+              >
+                <stop stopColor="#FF92BE" />
+                <stop offset="1" stopColor="#FF92BE" stopOpacity="0" />
+              </radialGradient>
+            </defs>
+          )}
           <path d={svgInfo.path} fill={panel.color} />
+          {isPencilTool && <path d={svgInfo.path} fill={`url(#${gradId})`} />}
         </svg>
       )}
       {innerContent}
@@ -559,6 +587,19 @@ function renderShapeInner(panel: PanelDef): React.ReactNode {
           <div className="banner-body">{panel.children}</div>
         </>
       );
+    case 'pencil-tool':
+      return <div className="pencil-tool-body">{panel.children}</div>;
+    case 'mushroom':
+      return (
+        <>
+          <div className="mushroom-header">
+            <span className="mushroom-title">{panel.title}</span>
+          </div>
+          <div className="mushroom-body">{panel.children}</div>
+        </>
+      );
+    case 'square-tone':
+      return <div className="square-tone-body">{panel.children}</div>;
     case 'dumbbell':
       return (
         <>

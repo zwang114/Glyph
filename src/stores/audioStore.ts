@@ -1,5 +1,8 @@
 import { create } from 'zustand';
-import { playGlyph, stopPlayback } from '../audio/audioEngine';
+import { persist } from 'zustand/middleware';
+import { playGlyph, stopPlayback, setSoundProfile } from '../audio/audioEngine';
+import { stopAmbient } from '../audio/ambientEngine';
+import { SOUND_PROFILES, getProfile } from '../audio/soundProfiles';
 import { useCanvasStore } from './canvasStore';
 
 interface AudioState {
@@ -10,6 +13,8 @@ interface AudioState {
   isLooping: boolean;
   /** Fractional column position per canvas (0 → gridWidth). */
   playheadCols: Record<string, number>;
+  /** Active sound profile id. */
+  soundProfile: string;
 }
 
 interface AudioActions {
@@ -25,100 +30,140 @@ interface AudioActions {
   setPlayheadCol: (canvasId: string, col: number) => void;
   /** Legacy single-canvas accessor — returns the first active playhead. */
   getPlayheadCol: (canvasId: string) => number;
+  toggleSoundProfile: () => void;
+  setProfileById: (id: string) => void;
 }
 
-export const useAudioStore = create<AudioState & AudioActions>()((set, get) => ({
-  isPlaying: false,
-  muted: false,
-  bpm: 160,
-  isLooping: false,
-  playheadCols: {},
+export const useAudioStore = create<AudioState & AudioActions>()(
+  persist(
+    (set, get) => ({
+      isPlaying: false,
+      muted: false,
+      bpm: 160,
+      isLooping: false,
+      playheadCols: {},
+      soundProfile: 'default',
 
-  setIsPlaying: (v) => set({ isPlaying: v }),
-  toggleMuted: () => set((s) => ({ muted: !s.muted })),
-  setBpm: (bpm) => set({ bpm: Math.max(20, Math.min(300, bpm)) }),
-  setPlayheadCol: (canvasId, col) =>
-    set((s) => ({ playheadCols: { ...s.playheadCols, [canvasId]: col } })),
-  getPlayheadCol: (canvasId) => get().playheadCols[canvasId] ?? 0,
+      setIsPlaying: (v) => set({ isPlaying: v }),
+      toggleMuted: () => set((s) => ({ muted: !s.muted })),
+      setBpm: (bpm) => set({ bpm: Math.max(20, Math.min(300, bpm)) }),
+      setPlayheadCol: (canvasId, col) =>
+        set((s) => ({ playheadCols: { ...s.playheadCols, [canvasId]: col } })),
+      getPlayheadCol: (canvasId) => get().playheadCols[canvasId] ?? 0,
 
-  toggleLooping: () => {
-    const next = !get().isLooping;
-    set({ isLooping: next });
-    if (get().isPlaying) {
-      // Restart all active canvases with the new loop flag.
-      get().startPlayback();
-    }
-  },
-  setLooping: (v) => set({ isLooping: v }),
+      toggleLooping: () => {
+        const next = !get().isLooping;
+        set({ isLooping: next });
+        if (get().isPlaying) {
+          get().startPlayback();
+        }
+      },
+      setLooping: (v) => set({ isLooping: v }),
 
-  startPlayback: () => {
-    const { muted, bpm, isLooping, playheadCols } = get();
-    if (muted) return;
-    const canvasState = useCanvasStore.getState();
-    const ids = canvasState.canvasOrder.filter(id => canvasState.canvases[id]);
-    if (ids.length === 0) return;
+      toggleSoundProfile: () => {
+        const current = get().soundProfile;
+        const idx = SOUND_PROFILES.findIndex(p => p.id === current);
+        const next = SOUND_PROFILES[(idx + 1) % SOUND_PROFILES.length];
+        getProfile(current)?.stopFn?.();
+        set({ soundProfile: next.id });
+        setSoundProfile(next.id);
+        next.startFn?.();
+      },
 
-    // Stop any current playback cleanly before relaunching.
-    stopPlayback();
+      setProfileById: (id: string) => {
+        const current = get().soundProfile;
+        if (current === id) return;
+        getProfile(current)?.stopFn?.();
+        const next = getProfile(id);
+        if (!next) return;
+        set({ soundProfile: next.id });
+        setSoundProfile(next.id);
+        next.startFn?.();
+      },
 
-    // All canvases share the same audio-clock origin so they're phase-locked.
-    // We compute it here (in the store) and pass it down to each playGlyph call.
-    // AudioContext is accessed via the engine's exported helper — we create it
-    // lazily by calling playGlyph with a tiny dummy, but instead just read the
-    // current time directly through the Web Audio API.
-    // Simpler: let the first playGlyph call establish the time, then reuse it.
-    // We do this by grabbing ctx from a fresh AudioContext reference here.
-    let sharedNow: number | undefined = undefined;
+      startPlayback: () => {
+        const { muted, bpm, playheadCols, isLooping } = get();
+        if (muted) return;
+        const canvasState = useCanvasStore.getState();
+        const ids = canvasState.canvasOrder.filter(id => canvasState.canvases[id]);
+        if (ids.length === 0) return;
 
-    set({ isPlaying: true, playheadCols: {} });
+        stopPlayback();
 
-    ids.forEach((id) => {
-      const frame = canvasState.canvases[id];
-      if (!frame) return;
+        const sharedNow: number | undefined = undefined;
 
-      const resumeCol = playheadCols[id] ?? 0;
-      const startCol =
-        resumeCol > 0 && resumeCol < frame.gridWidth ? Math.floor(resumeCol) : 0;
+        set({ isPlaying: true, playheadCols: {} });
 
-      playGlyph(
-        id,
-        bpm,
-        startCol,
-        true, // always loop (option C: all canvases loop until stopped)
-        (col) => get().setPlayheadCol(id, col),
-        () => {
-          // Individual canvas ended (non-loop). Check if all done.
-          const remaining = Object.keys(get().playheadCols).filter(
-            (cid) => get().playheadCols[cid] > 0
+        // Track which canvases are still actively playing so onEnd knows when
+        // the LAST one finishes. Without this, the playheadCols-based check
+        // would race with the per-canvas position writes.
+        const stillPlaying = new Set<string>(ids);
+
+        ids.forEach((id) => {
+          const frame = canvasState.canvases[id];
+          if (!frame) return;
+
+          const resumeCol = playheadCols[id] ?? 0;
+          const startCol =
+            resumeCol > 0 && resumeCol < frame.gridWidth ? Math.floor(resumeCol) : 0;
+
+          playGlyph(
+            id,
+            bpm,
+            startCol,
+            isLooping,
+            (col) => get().setPlayheadCol(id, col),
+            () => {
+              // This canvas reached the end (only fires when loop is off).
+              stillPlaying.delete(id);
+              // Clear THIS canvas's playhead immediately so its overlay
+              // disappears as soon as it finishes — even if other canvases
+              // are still playing.
+              set((s) => {
+                const next = { ...s.playheadCols };
+                delete next[id];
+                return { playheadCols: next };
+              });
+              if (stillPlaying.size === 0) {
+                // All canvases finished — return to a clean rest state so
+                // the next play press starts from column 0, not from
+                // wherever the playhead happened to land.
+                set({ isPlaying: false, playheadCols: {} });
+              }
+            },
+            sharedNow,
           );
-          if (remaining.length === 0) {
-            set({ isPlaying: false, playheadCols: {} });
-          }
-        },
-        sharedNow,
-      );
+        });
+      },
 
-      // After the first canvas establishes the AudioContext clock, subsequent
-      // canvases will use the same `sharedNow`. Since playGlyph uses
-      // `context.currentTime + 0.05` as default, and all calls happen
-      // synchronously in this forEach, they'll all get the same value anyway —
-      // but being explicit makes the intent clear and future-proof.
-      // (sharedNow remains undefined; playGlyph computes it consistently.)
-    });
-  },
+      pausePlayback: () => {
+        stopPlayback();
+        set({ isPlaying: false });
+      },
 
-  pausePlayback: () => {
-    stopPlayback();
-    set({ isPlaying: false });
-  },
+      stopPlayback: () => {
+        stopPlayback();
+        set({ isPlaying: false, playheadCols: {} });
+      },
 
-  stopPlayback: () => {
-    stopPlayback();
-    set({ isPlaying: false, playheadCols: {} });
-  },
-
-  resetPlayback: () => {
-    stopPlayback();
-    set({ isPlaying: false, playheadCols: {} });
-  },
-}));
+      resetPlayback: () => {
+        stopPlayback();
+        set({ isPlaying: false, playheadCols: {} });
+      },
+    }),
+    {
+      name: 'glyph-studio-audio',
+      version: 2,
+      // Sound profile is derived from mushroom snap state at runtime — never persist it.
+      // On reload, nothing is snapped, so we always start in 'default'.
+      partialize: () => ({}),
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.soundProfile = 'default';
+          setSoundProfile('default');
+          stopAmbient();
+        }
+      },
+    }
+  )
+);

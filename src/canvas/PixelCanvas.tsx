@@ -6,6 +6,13 @@ import { playPixel } from '../audio/audioEngine';
 import type { CanvasFrame } from '../types/canvas';
 import type { MirrorMode } from '../types/editor';
 import { drawShape } from '../engine/shapes';
+import {
+  seedFromCanvas,
+  step as bloomStep,
+  coverage as bloomCoverage,
+  countNonLetterAlive,
+  type BloomGrid,
+} from '../bloom/bloomEngine';
 
 // ─────────────────────────────────────────────────────────────────────
 // Visual constants
@@ -69,6 +76,12 @@ export function PixelCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number>(0);
+
+  // Bloom dev spike state
+  const bloomGridRef = useRef<BloomGrid | null>(null);
+  const bloomRunningRef = useRef(false);
+  const bloomRafRef = useRef(0);
+  const bloomTargetIdRef = useRef<string | null>(null);
 
   // Drawing state (per pointer-down interaction)
   const drawingRef = useRef(false);
@@ -409,6 +422,26 @@ export function PixelCanvas() {
       const b = bounds[i];
 
       drawFrame(ctx, frame, b, id === selectedCanvasId, id === hoverCanvasIdRef.current, showGrid);
+
+      // Bloom layer — rendered after drawFrame so canvas background doesn't cover it,
+      // but before any chrome (letter pixels are already drawn by drawFrame on top)
+      if (id === bloomTargetIdRef.current && bloomGridRef.current) {
+        const grid = bloomGridRef.current;
+        ctx.save();
+        // Clip to frame so bloom doesn't bleed outside the canvas bounds
+        ctx.beginPath();
+        ctx.roundRect(b.x, b.y, b.w, b.h, 8);
+        ctx.clip();
+        for (let r = 0; r < grid.length; r++) {
+          for (let c = 0; c < grid[r].length; c++) {
+            const cell = grid[r][c];
+            if (!cell.alive || cell.isLetterPixel) continue;
+            ctx.fillStyle = cell.color;
+            drawShape(ctx, cell.shape, r, c, b.cellSize, frame.pixelDensity, b.x, b.y);
+          }
+        }
+        ctx.restore();
+      }
     }
 
     // Draw ghost for duplicate-in-progress (under cursor)
@@ -749,6 +782,58 @@ export function PixelCanvas() {
     [getBrushCells, getMirrorCells, getLineCells, getTabRect, getPlusButtons]
   );
 
+  const runBloom = useCallback(() => {
+    if (bloomRunningRef.current) return;
+    const { canvases, selectedCanvasId, lastSelectedCanvasId } = useCanvasStore.getState();
+    const targetId = selectedCanvasId ?? lastSelectedCanvasId;
+    const frame = targetId ? canvases[targetId] : null;
+    if (!frame) return;
+
+    bloomTargetIdRef.current = targetId;
+    bloomGridRef.current = seedFromCanvas(frame);
+    bloomRunningRef.current = true;
+
+    let lastStepTime = 0;
+    let generation = 0;
+    let consecutiveSteadyGens = 0;
+    let prevNonLetterAlive = 0;
+    const STEP_INTERVAL = 150;
+
+    const tick = (now: number) => {
+      if (!bloomRunningRef.current) return;
+
+      if (now - lastStepTime >= STEP_INTERVAL) {
+        const nextGrid = bloomStep(bloomGridRef.current!);
+        bloomGridRef.current = nextGrid;
+        generation++;
+        lastStepTime = now;
+
+        const nextNonLetterAlive = countNonLetterAlive(nextGrid);
+        if (nextNonLetterAlive === prevNonLetterAlive) {
+          consecutiveSteadyGens++;
+        } else {
+          consecutiveSteadyGens = 0;
+        }
+        prevNonLetterAlive = nextNonLetterAlive;
+
+        dirtyRef.current = true;
+
+        if (
+          consecutiveSteadyGens >= 10 ||
+          bloomCoverage(nextGrid) >= 0.5 ||
+          generation >= 500
+        ) {
+          bloomRunningRef.current = false;
+          return;
+        }
+      }
+
+      bloomRafRef.current = requestAnimationFrame(tick);
+    };
+
+    bloomRafRef.current = requestAnimationFrame(tick);
+  }, []);
+
   // Mark the canvas as needing a redraw. The unified rAF loop picks it up.
   const scheduleRedraw = useCallback(() => {
     dirtyRef.current = true;
@@ -851,6 +936,8 @@ export function PixelCanvas() {
       unsub1(); unsub2(); unsub3(); unsub4();
       cancelAnimationFrame(rafRef.current);
       rafRef.current = 0;
+      cancelAnimationFrame(bloomRafRef.current);
+      bloomRunningRef.current = false;
     };
   }, [draw]);
 
@@ -1497,6 +1584,26 @@ export function PixelCanvas() {
         onPointerCancel={handlePointerCancel}
         onContextMenu={(e) => e.preventDefault()}
       />
+      <button
+        type="button"
+        onClick={runBloom}
+        style={{
+          position: 'fixed',
+          top: 16,
+          right: 16,
+          zIndex: 9999,
+          padding: '8px 16px',
+          background: '#FF3B6F',
+          color: '#fff',
+          border: 'none',
+          borderRadius: 4,
+          cursor: 'pointer',
+          fontFamily: 'monospace',
+          fontSize: 13,
+        }}
+      >
+        Bloom (dev)
+      </button>
       {canvasCount === 0 && (
         <button
           type="button"

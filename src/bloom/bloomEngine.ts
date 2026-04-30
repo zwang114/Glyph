@@ -1,16 +1,23 @@
 import type { CanvasFrame } from '../types/canvas';
 import type { PixelShape } from '../types/editor';
 
-const BLOOM_PALETTE = [
-  '#FF3B6F', '#FFB400', '#00C2A8', '#3D5AFE',
-  '#B14EFF', '#FF6B35', '#7CFF6B', '#FFEC3D',
-];
+const SHAPE_COLOR: Record<PixelShape, string> = {
+  square:   '#F5C518',
+  circle:   '#E8651A',
+  diamond:  '#E63946',
+  triangle: '#FF69B4',
+  cross:    '#7CB87C',
+  star:     '#6B9AB8',
+};
 
 export interface BloomCell {
   alive: boolean;
   shape: PixelShape;
   color: string;
   isLetterPixel: boolean;
+  above: boolean; // render above letter pixels?
+  aboveShape?: PixelShape; // if set, also render this shape on top of letter pixel
+  aboveColor?: string;
 }
 
 export type BloomGrid = BloomCell[][];
@@ -25,9 +32,10 @@ export function seedFromCanvas(frame: CanvasFrame): BloomGrid {
           shape: pixelShapes?.[r]?.[c] ?? pixelShape,
           color: '#1a1a1a',
           isLetterPixel: true,
+          above: false,
         };
       }
-      return { alive: false, shape: 'square' as PixelShape, color: '#1a1a1a', isLetterPixel: false };
+      return { alive: false, shape: 'square' as PixelShape, color: '#1a1a1a', isLetterPixel: false, above: false };
     })
   );
 }
@@ -51,7 +59,7 @@ function countLiveNeighbors(grid: BloomGrid, r: number, c: number): { count: num
 
 function inheritAppearance(neighbors: BloomCell[]): { shape: PixelShape; color: string } {
   const shape = neighbors[Math.floor(Math.random() * neighbors.length)].shape;
-  const color = BLOOM_PALETTE[Math.floor(Math.random() * BLOOM_PALETTE.length)];
+  const color = SHAPE_COLOR[shape];
   return { shape, color };
 }
 
@@ -61,15 +69,26 @@ export function step(grid: BloomGrid): BloomGrid {
   return Array.from({ length: rows }, (_, r) =>
     Array.from({ length: cols }, (_, c) => {
       const cell = grid[r][c];
-      if (cell.isLetterPixel) return cell;
+      if (cell.isLetterPixel) {
+        const { count, cells } = countLiveNeighbors(grid, r, c);
+        if (count === 3 && Math.random() < 0.3) {
+          const { shape, color } = inheritAppearance(cells);
+          return { ...cell, aboveShape: shape, aboveColor: color };
+        }
+        // Fade out aboveShape over time randomly
+        if (cell.aboveShape && Math.random() < 0.1) {
+          return { ...cell, aboveShape: undefined, aboveColor: undefined };
+        }
+        return cell;
+      }
       const { count, cells } = countLiveNeighbors(grid, r, c);
       if (cell.alive) {
         const survives = count === 2 || count === 3 || count === 7;
-        return survives ? cell : { alive: false, shape: cell.shape, color: cell.color, isLetterPixel: false };
+        return survives ? cell : { alive: false, shape: cell.shape, color: cell.color, isLetterPixel: false, above: cell.above };
       } else {
         if (count === 3) {
           const { shape, color } = inheritAppearance(cells);
-          return { alive: true, shape, color, isLetterPixel: false };
+          return { alive: true, shape, color, isLetterPixel: false, above: Math.random() < 0.3 };
         }
         return cell;
       }

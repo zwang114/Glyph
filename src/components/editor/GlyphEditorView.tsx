@@ -40,6 +40,8 @@ export function WorkspaceView() {
   const setTool = useEditorStore((s) => s.setTool);
   const toggleGrid = useEditorStore((s) => s.toggleGrid);
   const toggleMetrics = useEditorStore((s) => s.toggleMetrics);
+  const darkMode = useEditorStore((s) => s.darkMode);
+  const toggleDarkMode = useEditorStore((s) => s.toggleDarkMode);
   // Forest tone / sound profile is driven by whether the connector mushroom
   // is snapped onto the pixel-shape panel. When the user plugs the mushroom
   // in → forest tones; pull it out → default tones. We read the toggle action
@@ -495,6 +497,13 @@ export function WorkspaceView() {
       {hydrated && (
         <>
           <PixelCanvas />
+          <button
+            className={`dark-mode-toggle ${darkMode ? 'dark-mode-toggle--on' : ''}`}
+            onClick={toggleDarkMode}
+            title="Toggle dark artboard"
+          >
+            <span className="dark-mode-toggle-knob" />
+          </button>
           <PhysicsPanels
             ref={physicsRef}
             panels={activePanels}

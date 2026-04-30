@@ -80,8 +80,8 @@ export function nextUnusedLetter(
   return null;
 }
 
-const DEFAULT_GRID_W = 24;
-const DEFAULT_GRID_H = 32;
+export const DEFAULT_GRID_W = 24;
+export const DEFAULT_GRID_H = 32;
 
 export function createEmptyCanvas(
   id: string,

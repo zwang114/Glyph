@@ -424,6 +424,40 @@ body {
  * Button geometry is locked: 38px tall, full-pill radius, 1px black border
  * in BOTH states. Active pill flips fill to black and text to #FF6200.
  * ──────────────────────────────────────────────────────────────────────── */
+
+/* ── Dark mode toggle ───────────────────────────────────────────────── */
+.dark-mode-toggle {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  background: #ccc;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.2s;
+  z-index: 50;
+  pointer-events: auto;
+}
+.dark-mode-toggle--on {
+  background: #1a1a1a;
+}
+.dark-mode-toggle-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s;
+  display: block;
+}
+.dark-mode-toggle--on .dark-mode-toggle-knob {
+  transform: translateX(20px);
+}
 .pencil-tool-panel {
   background: transparent !important;
   border-radius: 0 !important;
@@ -733,6 +767,7 @@ body {
   opacity: 0.3;
   cursor: default;
 }
+
 
 /* Triangle panel styles kept for backward compatibility (no longer used by
    the Character tool, but the shape type still exists on PanelDef). */

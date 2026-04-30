@@ -21,6 +21,8 @@ interface EditorState {
    * UI-only; wiring it to actual audio will happen in a follow-up.
    */
   forestToneEnabled: boolean;
+  /** Dark mode: artboard background turns black, pixels turn white. */
+  darkMode: boolean;
 }
 
 interface EditorActions {
@@ -32,6 +34,7 @@ interface EditorActions {
   setBrushSize: (value: number) => void;
   stepBrushSize: (dir: 1 | -1) => void;
   setForestToneEnabled: (enabled: boolean) => void;
+  toggleDarkMode: () => void;
 }
 
 type EditorStore = EditorState & EditorActions;
@@ -44,6 +47,7 @@ export const useEditorStore = create<EditorStore>()((set) => ({
   drawValue: true,
   brushSize: 1,
   forestToneEnabled: false,
+  darkMode: false,
 
   setTool: (tool) => set({ activeTool: tool }),
   toggleGrid: () => set((s) => ({ showGrid: !s.showGrid })),
@@ -59,4 +63,5 @@ export const useEditorStore = create<EditorStore>()((set) => ({
       return { brushSize: BRUSH_SIZE_STEPS[next] };
     }),
   setForestToneEnabled: (enabled) => set({ forestToneEnabled: enabled }),
+  toggleDarkMode: () => set((s) => ({ darkMode: !s.darkMode })),
 }));

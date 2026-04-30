@@ -80,6 +80,7 @@ export function PixelCanvas() {
   // Bloom dev spike state
   const bloomGridRef = useRef<BloomGrid | null>(null);
   const bloomRunningRef = useRef(false);
+  const bloomPausedRef = useRef(false);
   const bloomRafRef = useRef(0);
   const bloomTargetIdRef = useRef<string | null>(null);
 
@@ -383,7 +384,7 @@ export function PixelCanvas() {
       selectedCanvasId,
       viewport,
     } = useCanvasStore.getState();
-    const { showGrid } = useEditorStore.getState();
+    const { showGrid, darkMode } = useEditorStore.getState();
 
     const dpr = devicePixelRatio;
     const canvasW = canvas.width / dpr;
@@ -393,7 +394,7 @@ export function PixelCanvas() {
     ctx.scale(dpr, dpr);
 
     // Fill workspace background
-    ctx.fillStyle = BG_COLOR;
+    ctx.fillStyle = darkMode ? '#000000' : BG_COLOR;
     ctx.fillRect(0, 0, canvasW, canvasH);
 
     // Compute + cache frame bounds for hit-testing
@@ -421,26 +422,52 @@ export function PixelCanvas() {
       if (!frame) continue;
       const b = bounds[i];
 
-      drawFrame(ctx, frame, b, id === selectedCanvasId, id === hoverCanvasIdRef.current, showGrid);
+      const hasBloom = id === bloomTargetIdRef.current && bloomGridRef.current;
 
-      // Bloom layer — rendered after drawFrame so canvas background doesn't cover it,
-      // but before any chrome (letter pixels are already drawn by drawFrame on top)
-      if (id === bloomTargetIdRef.current && bloomGridRef.current) {
-        const grid = bloomGridRef.current;
-        ctx.save();
-        // Clip to frame so bloom doesn't bleed outside the canvas bounds
-        ctx.beginPath();
-        ctx.roundRect(b.x, b.y, b.w, b.h, 8);
-        ctx.clip();
-        for (let r = 0; r < grid.length; r++) {
-          for (let c = 0; c < grid[r].length; c++) {
-            const cell = grid[r][c];
-            if (!cell.alive || cell.isLetterPixel) continue;
-            ctx.fillStyle = cell.color;
-            drawShape(ctx, cell.shape, r, c, b.cellSize, frame.pixelDensity, b.x, b.y);
+      if (hasBloom) {
+        const grid = bloomGridRef.current!;
+
+        const drawBloomPass = (above: boolean) => {
+          ctx.save();
+          ctx.beginPath();
+          ctx.roundRect(b.x, b.y, b.w, b.h, 8);
+          ctx.clip();
+          for (let r = 0; r < grid.length; r++) {
+            for (let c = 0; c < grid[r].length; c++) {
+              const cell = grid[r][c];
+              if (!cell.alive) continue;
+              if (cell.isLetterPixel) {
+                // In above pass, draw bloom on top of letter pixels if flagged
+                if (above && cell.aboveShape && cell.aboveColor) {
+                  ctx.fillStyle = cell.aboveColor;
+                  drawShape(ctx, cell.aboveShape, r, c, b.cellSize, frame.pixelDensity, b.x, b.y);
+                }
+                continue;
+              }
+              if (cell.above !== above) continue;
+              ctx.fillStyle = cell.color;
+              drawShape(ctx, cell.shape, r, c, b.cellSize, frame.pixelDensity, b.x, b.y);
+            }
           }
-        }
-        ctx.restore();
+          ctx.restore();
+        };
+
+        // Background fill
+        ctx.fillStyle = darkMode ? '#000000' : CANVAS_FILL_COLOR;
+        ctx.beginPath();
+        ctx.roundRect(b.x, b.y, b.w, b.h, CANVAS_CORNER_RADIUS);
+        ctx.fill();
+
+        // Below-letter bloom
+        drawBloomPass(false);
+
+        // Letter pixels
+        drawFrame(ctx, frame, b, id === selectedCanvasId, id === hoverCanvasIdRef.current, showGrid, true, darkMode);
+
+        // Above-letter bloom
+        drawBloomPass(true);
+      } else {
+        drawFrame(ctx, frame, b, id === selectedCanvasId, id === hoverCanvasIdRef.current, showGrid, false, darkMode);
       }
     }
 
@@ -470,15 +497,21 @@ export function PixelCanvas() {
       b: FrameBounds,
       isSelected: boolean,
       isHovered: boolean,
-      showGrid: boolean
+      showGrid: boolean,
+      skipFill = false,
+      darkMode = false
     ) => {
       const { activeTool } = useEditorStore.getState();
+      const canvasFill = darkMode ? '#000000' : CANVAS_FILL_COLOR;
+      const pixelColor = darkMode ? '#ffffff' : PIXEL_COLOR;
 
       // ── Canvas fill (rounded) ────────────────────────────────────
-      ctx.fillStyle = CANVAS_FILL_COLOR;
-      ctx.beginPath();
-      ctx.roundRect(b.x, b.y, b.w, b.h, CANVAS_CORNER_RADIUS);
-      ctx.fill();
+      if (!skipFill) {
+        ctx.fillStyle = canvasFill;
+        ctx.beginPath();
+        ctx.roundRect(b.x, b.y, b.w, b.h, CANVAS_CORNER_RADIUS);
+        ctx.fill();
+      }
 
       // ── Dot grid (clipped + difference blend) ────────────────────
       if (showGrid) {
@@ -560,7 +593,7 @@ export function PixelCanvas() {
       };
 
       // Default color for pixels not currently flashing.
-      ctx.fillStyle = PIXEL_COLOR;
+      ctx.fillStyle = pixelColor;
       for (let r = 0; r < frame.gridHeight; r++) {
         for (let c = 0; c < frame.gridWidth; c++) {
           if (!frame.pixels[r][c]) continue;
@@ -571,7 +604,7 @@ export function PixelCanvas() {
           const flashStart = frameFlashMap?.get(r * FLASH_KEY_COLS + c);
           ctx.fillStyle = flashStart !== undefined
             ? getFlashColor(nowMs - flashStart)
-            : PIXEL_COLOR;
+            : pixelColor;
 
           drawShape(ctx, cellShape, r, c, b.cellSize, frame.pixelDensity, b.x, b.y);
         }
@@ -783,7 +816,19 @@ export function PixelCanvas() {
   );
 
   const runBloom = useCallback(() => {
-    if (bloomRunningRef.current) return;
+    if (bloomRunningRef.current && !bloomPausedRef.current) {
+      // Running → pause
+      bloomPausedRef.current = true;
+      return;
+    }
+    if (bloomPausedRef.current) {
+      // Paused → restart fresh
+      bloomRunningRef.current = false;
+      bloomPausedRef.current = false;
+      cancelAnimationFrame(bloomRafRef.current);
+      bloomGridRef.current = null;
+      bloomTargetIdRef.current = null;
+    }
     const { canvases, selectedCanvasId, lastSelectedCanvasId } = useCanvasStore.getState();
     const targetId = selectedCanvasId ?? lastSelectedCanvasId;
     const frame = targetId ? canvases[targetId] : null;
@@ -801,6 +846,7 @@ export function PixelCanvas() {
 
     const tick = (now: number) => {
       if (!bloomRunningRef.current) return;
+      if (bloomPausedRef.current) { bloomRafRef.current = requestAnimationFrame(tick); return; }
 
       if (now - lastStepTime >= STEP_INTERVAL) {
         const nextGrid = bloomStep(bloomGridRef.current!);

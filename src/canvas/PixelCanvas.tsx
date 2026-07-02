@@ -472,8 +472,7 @@ export function PixelCanvas() {
       for (let r = 0; r < frame.gridHeight; r++) {
         for (let c = 0; c < frame.gridWidth; c++) {
           if (!frame.pixels[r][c]) continue;
-          let cellShape = perCellShapes?.[r]?.[c] ?? frame.pixelShape;
-          if ((cellShape as string) === 'metaball') cellShape = 'cross';
+          const cellShape = perCellShapes?.[r]?.[c] ?? frame.pixelShape;
 
           // Integer key lookup — no string allocation.
           const flashStart = frameFlashMap?.get(r * FLASH_KEY_COLS + c);

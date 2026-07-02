@@ -437,8 +437,6 @@ export function playPixel(
   }
 }
 
-// Scheduled node stop handles so we can cancel playback
-let scheduledStops: (() => void)[] = [];
 let playbackTimeout: ReturnType<typeof setTimeout> | null = null;
 // One rAF handle per active canvas so stopPlayback can kill them all.
 const playheadRafs: Map<string, number> = new Map();
@@ -672,10 +670,6 @@ export function stopPlayback() {
     sequenceBus = null;
     sequenceCompressor = null;
   }
-  for (const stop of scheduledStops) {
-    try { stop(); } catch { /* ignore */ }
-  }
-  scheduledStops = [];
   if (playbackTimeout !== null) {
     clearTimeout(playbackTimeout);
     playbackTimeout = null;

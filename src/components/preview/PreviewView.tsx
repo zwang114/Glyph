@@ -39,14 +39,23 @@ export function PreviewView() {
       }
     }, 300);
 
+    // Only cancel the pending debounce here — revoking prevUrlRef on every
+    // dependency change would kill the URL the applied @font-face still
+    // points to before the browser may have fetched it. Final revocation
+    // happens in the unmount-only effect below.
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [project, glyphs, glyphCount, pixelShape, pixelDensity]);
+
+  useEffect(() => {
+    return () => {
       if (prevUrlRef.current) {
         URL.revokeObjectURL(prevUrlRef.current);
         prevUrlRef.current = null;
       }
     };
-  }, [project, glyphs, glyphCount, pixelShape, pixelDensity]);
+  }, []);
 
   const activeFont = glyphCount > 0 ? font : null;
 

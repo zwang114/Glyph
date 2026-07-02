@@ -48,7 +48,12 @@ export const useAudioStore = create<AudioState & AudioActions>()(
       toggleMuted: () => set((s) => ({ muted: !s.muted })),
       setBpm: (bpm) => set({ bpm: Math.max(20, Math.min(300, bpm)) }),
       setPlayheadCol: (canvasId, col) =>
-        set((s) => ({ playheadCols: { ...s.playheadCols, [canvasId]: col } })),
+        set((s) => {
+          // Playback callbacks can outlive their canvas (deleted mid-play) —
+          // don't accumulate playhead entries for canvases that no longer exist.
+          if (!useCanvasStore.getState().canvases[canvasId]) return s;
+          return { playheadCols: { ...s.playheadCols, [canvasId]: col } };
+        }),
       getPlayheadCol: (canvasId) => get().playheadCols[canvasId] ?? 0,
 
       toggleLooping: () => {

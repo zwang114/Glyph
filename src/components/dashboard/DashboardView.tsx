@@ -7,9 +7,10 @@ export function DashboardView() {
   const project = useFontStore((s) => s.project);
 
   const handleNew = () => {
-    initProject('Untitled');
-    // TODO(Stage 5): route to new multi-canvas workspace.
-    navigate(`/project/${project.id}/edit`);
+    // Navigate with the id returned by initProject — the `project` selector
+    // captured at render still holds the previous project's id.
+    const newId = initProject('Untitled');
+    navigate(`/project/${newId}/edit`);
   };
 
   const handleOpen = () => {

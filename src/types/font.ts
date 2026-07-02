@@ -1,3 +1,5 @@
+import type { PixelShape } from './editor';
+
 export interface FontProject {
   id: string;
   name: string;
@@ -19,6 +21,8 @@ export interface Glyph {
   gridWidth: number;
   gridHeight: number;
   pixels: boolean[][]; // [row][col], true = filled
+  // Per-cell shape overrides; null/absent cells fall back to the glyph-level shape.
+  pixelShapes?: (PixelShape | null)[][];
   advanceWidth: number;
   leftSideBearing: number;
 }

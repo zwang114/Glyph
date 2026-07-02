@@ -31,6 +31,7 @@ export function useCompatGlyphs(): Record<string, Glyph> {
         gridWidth: c.gridWidth,
         gridHeight: c.gridHeight,
         pixels: c.pixels,
+        pixelShapes: c.pixelShapes,
         advanceWidth: c.gridWidth,
         leftSideBearing: 0,
       };

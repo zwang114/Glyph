@@ -16,8 +16,9 @@ function glyphToPath(
     for (let c = 0; c < glyph.gridWidth; c++) {
       if (!glyph.pixels[r][c]) continue;
 
+      const cellShape = glyph.pixelShapes?.[r]?.[c] ?? shape;
       const cmds = shapeToPathCommands(
-        shape, c, r, glyph.gridHeight, pxSize, density, project.descender
+        cellShape, c, r, glyph.gridHeight, pxSize, density, project.descender
       );
 
       for (const cmd of cmds) {
@@ -25,7 +26,6 @@ function glyphToPath(
           case 'M': path.moveTo(cmd.args[0], cmd.args[1]); break;
           case 'L': path.lineTo(cmd.args[0], cmd.args[1]); break;
           case 'C': path.curveTo(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3], cmd.args[4], cmd.args[5]); break;
-          case 'Q': path.quadTo(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3]); break;
           case 'Z': path.close(); break;
         }
       }
@@ -101,21 +101,22 @@ export function compileFont(
   });
 }
 
+// opentype.js only writes CFF-flavored OpenType, so the download is always
+// a genuine .otf — offering a .ttf here would just be a renamed OTF.
 export function downloadFont(
   project: FontProject,
   glyphs: Record<string, Glyph>,
-  format: 'otf' | 'ttf' = 'otf',
   shape: PixelShape = 'square',
   density: number = 1.0
 ) {
   const font = compileFont(project, glyphs, shape, density);
   const buffer = font.toArrayBuffer();
-  const blob = new Blob([buffer], { type: 'font/opentype' });
+  const blob = new Blob([buffer], { type: 'font/otf' });
   const url = URL.createObjectURL(blob);
 
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${project.familyName}-${project.styleName}.${format}`;
+  a.download = `${project.familyName}-${project.styleName}.otf`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

@@ -36,7 +36,7 @@ interface FontActions {
   addKernPair: (pair: KernPair) => void;
   updateKernPair: (index: number, value: number) => void;
   removeKernPair: (index: number) => void;
-  initProject: (name: string) => void;
+  initProject: (name: string) => string;
 }
 
 type FontStore = FontState & FontActions;
@@ -181,22 +181,28 @@ export const useFontStore = create<FontStore>()(
               ...s.glyphs,
               [glyphId]: { ...glyph, advanceWidth: width },
             },
+            project: { ...s.project, modifiedAt: Date.now() },
           };
         }),
 
       addKernPair: (pair) =>
-        set((s) => ({ kernPairs: [...s.kernPairs, pair] })),
+        set((s) => ({
+          kernPairs: [...s.kernPairs, pair],
+          project: { ...s.project, modifiedAt: Date.now() },
+        })),
 
       updateKernPair: (index, value) =>
         set((s) => ({
           kernPairs: s.kernPairs.map((p, i) =>
             i === index ? { ...p, value } : p
           ),
+          project: { ...s.project, modifiedAt: Date.now() },
         })),
 
       removeKernPair: (index) =>
         set((s) => ({
           kernPairs: s.kernPairs.filter((_, i) => i !== index),
+          project: { ...s.project, modifiedAt: Date.now() },
         })),
 
       initProject: (name) => {
@@ -209,6 +215,7 @@ export const useFontStore = create<FontStore>()(
           ),
           kernPairs: [],
         });
+        return project.id;
       },
     }),
     {

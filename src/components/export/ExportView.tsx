@@ -13,8 +13,8 @@ export function ExportView() {
     g.pixels.some((row) => row.some(Boolean))
   ).length;
 
-  const handleExport = (format: 'otf' | 'ttf') => {
-    downloadFont(project, glyphs, format, pixelShape, pixelDensity);
+  const handleExport = () => {
+    downloadFont(project, glyphs, pixelShape, pixelDensity);
     setExported(true);
     setTimeout(() => setExported(false), 2000);
   };
@@ -48,11 +48,8 @@ export function ExportView() {
         </div>
 
         <div className="export-actions">
-          <button className="btn" onClick={() => handleExport('otf')}>
+          <button className="btn" onClick={handleExport}>
             Download OTF
-          </button>
-          <button className="btn" onClick={() => handleExport('ttf')}>
-            Download TTF
           </button>
         </div>
 

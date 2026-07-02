@@ -144,7 +144,16 @@ export function useProjectPersistence(projectId: string | undefined): {
         // Only include `muted` in the spread if the source omits it, so a
         // legacy save (where `muted` is literally absent) gets `false`, and
         // a modern save's `true` is preserved.
-        hydratedCanvases[id] = { ...c, muted: c.muted ?? false };
+        // Legacy saves may also contain the removed 'metaball' per-cell shape;
+        // map it to 'cross' once here so renderers and the font compiler
+        // never see it.
+        hydratedCanvases[id] = {
+          ...c,
+          muted: c.muted ?? false,
+          pixelShapes: c.pixelShapes?.map((row) =>
+            row.map((s) => ((s as string) === 'metaball' ? 'cross' : s))
+          ),
+        };
       }
       useCanvasStore.setState({
         canvases: hydratedCanvases,

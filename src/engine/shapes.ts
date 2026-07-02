@@ -257,7 +257,7 @@ export function shapeToPathCommands(
   pxSize: number,
   density: number,
   descender: number
-): { cmd: 'M' | 'L' | 'Q' | 'C' | 'Z'; args: number[] }[] {
+): { cmd: 'M' | 'L' | 'C' | 'Z'; args: number[] }[] {
   const cx = col * pxSize + pxSize / 2;
   const cy = (gridHeight - row) * pxSize + descender - pxSize / 2;
   const size = pxSize * density;

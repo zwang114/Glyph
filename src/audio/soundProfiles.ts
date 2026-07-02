@@ -2,6 +2,7 @@ import type { PixelShape } from '../types/editor';
 import { startAmbient, stopAmbient, playForestNote } from './ambientEngine';
 import { playC418Note } from './c418Engine';
 import { startC418Ambient, stopC418Ambient } from './c418AmbientEngine';
+import { startGamelanAmbient, stopGamelanAmbient, playGamelanNote } from './gamelanEngine';
 
 export type NotePlayerFn = (
   row: number,
@@ -41,6 +42,13 @@ export const SOUND_PROFILES: SoundProfile[] = [
     startFn: startC418Ambient,
     stopFn: stopC418Ambient,
     notePlayerFn: playC418Note,
+  },
+  {
+    id: 'gamelan',
+    label: 'Gamelan',
+    startFn: startGamelanAmbient,
+    stopFn: stopGamelanAmbient,
+    notePlayerFn: playGamelanNote,
   },
   // Add new profiles here — no other files need to change.
 ];

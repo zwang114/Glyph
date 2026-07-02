@@ -397,6 +397,7 @@ function buildPenPath(w: number, h: number): string {
 const SNAP_PAIRS: Record<string, string> = {
   forest: 'shape',
   'square-tone': 'shape',
+  gamelan: 'shape',
 };
 
 const SNAP_RADIUS = 40;     // pointer-up within this distance of snap point → snap
@@ -967,9 +968,15 @@ function PhysicsPanelsInner(
 
     // Attempt to snap onto a partner if this panel has one defined and the
     // child's peg is close enough to the partner's notch. Skipped if the
-    // child is already snapped (still attached from a prior interaction).
+    // child is already snapped (still attached from a prior interaction),
+    // or if another connector already occupies the partner's notch — the
+    // notch is a single socket, so only one connector can be plugged in
+    // at a time.
     const partnerId = SNAP_PAIRS[panelId];
-    if (partnerId && body && !snappedRef.current.has(panelId)) {
+    const notchOccupied = partnerId
+      ? [...snappedRef.current.values()].some((p) => p.partnerId === partnerId)
+      : false;
+    if (partnerId && body && !snappedRef.current.has(panelId) && !notchOccupied) {
       const partnerBody = bodiesRef.current.get(partnerId);
       const childPanel = panelsRef.current.find((p) => p.id === panelId);
       const partnerPanel = panelsRef.current.find((p) => p.id === partnerId);

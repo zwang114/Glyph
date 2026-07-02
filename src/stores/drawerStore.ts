@@ -10,9 +10,9 @@ interface DrawerState {
 export const useDrawerStore = create<DrawerState>()(
   persist(
     (set) => ({
-      // Forest connector mushroom starts in the drawer — user drags it out
-      // and snaps it onto the shape panel's top connector notch.
-      storedPanelIds: ['mirror', 'onion', 'forest', 'square-tone'],
+      // Sound connectors start in the drawer — user drags one out and snaps
+      // it onto the shape panel's top connector notch.
+      storedPanelIds: ['mirror', 'onion', 'forest', 'square-tone', 'gamelan'],
       storePanel: (id) =>
         set((s) => ({
           storedPanelIds: s.storedPanelIds.includes(id)
@@ -26,14 +26,16 @@ export const useDrawerStore = create<DrawerState>()(
     }),
     {
       name: 'glyph-studio-drawer',
-      version: 3,
+      version: 4,
       partialize: (state) => ({ storedPanelIds: state.storedPanelIds }),
       // Preserve the user's drawer arrangement across version bumps; just make
-      // sure newly-introduced default panels (e.g. square-tone) are present.
+      // sure newly-introduced default panels (e.g. square-tone, gamelan) are
+      // present.
       migrate: (persisted) => {
         const prev = (persisted as { storedPanelIds?: string[] } | undefined)?.storedPanelIds;
         const ids = Array.isArray(prev) ? [...prev] : ['mirror', 'onion', 'forest'];
         if (!ids.includes('square-tone')) ids.push('square-tone');
+        if (!ids.includes('gamelan')) ids.push('gamelan');
         return { storedPanelIds: ids };
       },
     }

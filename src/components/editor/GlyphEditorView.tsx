@@ -378,9 +378,14 @@ export function WorkspaceView() {
         // Square sound-profile connector — 74×80 with a single bottom peg.
         // Same snap geometry as the mushroom: shoulders at y=74 sit on the
         // shape panel's top edge, peg descends 6px into the notch.
-        // Audio wiring will be added in a follow-up; for now this is purely
-        // a visual + snap-mechanic tool.
+        // Snapping it in activates the C418 profile.
         id: 'square-tone', width: 74, height: 80, color: '#8C70CA', title: '', shape: 'square-tone' as const,
+        children: null,
+      },
+      {
+        // Bronze gamelan connector — same square-tone geometry, different
+        // color. Snapping it in activates the Gamelan / music box profile.
+        id: 'gamelan', width: 74, height: 80, color: '#B8863B', title: '', shape: 'square-tone' as const,
         children: null,
       },
       {
@@ -460,17 +465,21 @@ export function WorkspaceView() {
     (childId: string, partnerId: string | null) => {
       const snapped = partnerId === 'shape';
 
-      if (childId === 'forest') {
-        // Mushroom → forest profile when snapped, default when detached
-        const current = useAudioStore.getState().soundProfile;
-        const wantsId = snapped ? 'forest' : 'default';
-        if (current !== wantsId) setProfileById(wantsId);
-      } else if (childId === 'square-tone') {
-        // Purple square → C418 profile when snapped, default when detached
-        const current = useAudioStore.getState().soundProfile;
-        const wantsId = snapped ? 'c418' : 'default';
-        if (current !== wantsId) setProfileById(wantsId);
-      }
+      // Connector panel id → the sound profile it activates when plugged
+      // into the shape panel's notch. The notch is a single socket
+      // (PhysicsPanels rejects a snap while it's occupied), so detaching
+      // always returns to 'default'.
+      const CONNECTOR_PROFILES: Record<string, string> = {
+        forest: 'forest',
+        'square-tone': 'c418',
+        gamelan: 'gamelan',
+      };
+      const profileId = CONNECTOR_PROFILES[childId];
+      if (!profileId) return;
+
+      const current = useAudioStore.getState().soundProfile;
+      const wantsId = snapped ? profileId : 'default';
+      if (current !== wantsId) setProfileById(wantsId);
     },
     [setProfileById]
   );

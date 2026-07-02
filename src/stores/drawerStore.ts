@@ -28,7 +28,14 @@ export const useDrawerStore = create<DrawerState>()(
       name: 'glyph-studio-drawer',
       version: 3,
       partialize: (state) => ({ storedPanelIds: state.storedPanelIds }),
-      migrate: () => ({ storedPanelIds: ['mirror', 'onion', 'forest', 'square-tone'] }),
+      // Preserve the user's drawer arrangement across version bumps; just make
+      // sure newly-introduced default panels (e.g. square-tone) are present.
+      migrate: (persisted) => {
+        const prev = (persisted as { storedPanelIds?: string[] } | undefined)?.storedPanelIds;
+        const ids = Array.isArray(prev) ? [...prev] : ['mirror', 'onion', 'forest'];
+        if (!ids.includes('square-tone')) ids.push('square-tone');
+        return { storedPanelIds: ids };
+      },
     }
   )
 );

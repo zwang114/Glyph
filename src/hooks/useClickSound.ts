@@ -46,7 +46,10 @@ export function useClickSound() {
   const playClick = useCallback(() => {
     try {
       synthesizeClick(getCtx());
-    } catch {}
+    } catch {
+      // Click sound is non-essential — swallow audio-context failures
+      // (e.g. autoplay restrictions before first user gesture).
+    }
   }, []);
   return { playClick };
 }

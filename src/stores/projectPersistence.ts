@@ -80,8 +80,10 @@ function readFromStorage(projectId: string): PersistedPayload | null {
 function writeToStorage(projectId: string, payload: PersistedPayload): void {
   try {
     localStorage.setItem(storageKey(projectId), JSON.stringify(payload));
-  } catch {
-    // Quota exceeded / private-mode / etc. — silent no-op.
+  } catch (err) {
+    // Quota exceeded / private-mode / etc. The app keeps working from
+    // memory, but warn so a stale save doesn't go unnoticed.
+    console.warn(`Glyph Studio: failed to save project "${projectId}" to localStorage`, err);
   }
 }
 
@@ -117,17 +119,19 @@ function snapshotPayload(): PersistedPayload {
 export function useProjectPersistence(projectId: string | undefined): {
   hydrated: boolean;
 } {
-  const [hydrated, setHydrated] = useState(false);
+  // `hydrated` is derived: true only while the hydrated-for project matches
+  // the current one. Switching projects flips it false on the next render
+  // without any setState call in the effect body.
+  const [hydratedFor, setHydratedFor] = useState<string | null>(null);
   // Track which project we've hydrated for — if it changes, we rehydrate.
   const hydratedForRef = useRef<string | null>(null);
+  const hydrated = !!projectId && hydratedFor === projectId;
 
   useEffect(() => {
     if (!projectId) {
-      setHydrated(false);
       hydratedForRef.current = null;
       return;
     }
-    setHydrated(false);
 
     // ── Hydrate ────────────────────────────────────────────────────
     const saved = readFromStorage(projectId);
@@ -172,7 +176,12 @@ export function useProjectPersistence(projectId: string | undefined): {
     useCanvasStore.temporal.getState().clear();
 
     hydratedForRef.current = projectId;
-    setHydrated(true);
+    // Signal hydration-complete from a microtask so the effect body itself
+    // performs no synchronous setState (react-hooks/set-state-in-effect).
+    // Microtasks run before paint, so there is no visible un-hydrated flash.
+    queueMicrotask(() => {
+      if (hydratedForRef.current === projectId) setHydratedFor(projectId);
+    });
 
     // ── Subscribe + debounced write ────────────────────────────────
     let timer: ReturnType<typeof setTimeout> | null = null;

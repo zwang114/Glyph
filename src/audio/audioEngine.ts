@@ -96,20 +96,6 @@ function rowToHz(row: number, gridHeight: number): number {
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
 
-// Shape → oscillator type + optional modulation
-type OscType = OscillatorType;
-
-function shapeToOscType(shape: PixelShape): OscType {
-  switch (shape) {
-    case 'square': return 'square';
-    case 'circle': return 'sine';
-    case 'diamond': return 'sawtooth';
-    case 'triangle': return 'triangle';
-    case 'cross': return 'triangle'; // only used by the generic path — cross has its own branch
-    case 'star': return 'sine';      // AM modulated below
-  }
-}
-
 /**
  * Shared 0.5s mono noise buffer, generated lazily and cached. Used as the
  * pick/excitation burst at the front of each guitar note.
@@ -615,7 +601,13 @@ export function playGlyph(
     //   3. publish the playhead position for the canvas overlay.
     const tick = () => {
       const frame = useCanvasStore.getState().canvases[canvasId];
-      if (!frame) return;
+      if (!frame) {
+        // Canvas deleted mid-playback — treat as finished so the store's
+        // stillPlaying tracking drains and isPlaying doesn't hang true.
+        playheadRafs.delete(canvasId);
+        onEnd?.();
+        return;
+      }
       const gridWidth = frame.gridWidth;
       const elapsed = context.currentTime - now;
       const colFloat = firstCol + elapsed / colDuration;

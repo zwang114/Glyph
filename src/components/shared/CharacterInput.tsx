@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { BASIC_LATIN } from '../../utils/charset';
 
 interface CharacterInputProps {
@@ -25,9 +25,13 @@ export function CharacterInput({ value, isDisabled, onChange }: CharacterInputPr
   const [text, setText] = useState<string>(value ?? '');
 
   // Sync when the external value changes (e.g., selecting a different canvas).
-  useEffect(() => {
+  // Adjusting state during render (with a previous-value guard) avoids the
+  // extra commit an effect-based sync would cause.
+  const [prevValue, setPrevValue] = useState(value);
+  if (value !== prevValue) {
+    setPrevValue(value);
     setText(value ?? '');
-  }, [value]);
+  }
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value;

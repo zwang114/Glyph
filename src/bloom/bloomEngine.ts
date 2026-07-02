@@ -1,7 +1,7 @@
 import type { CanvasFrame } from '../types/canvas';
 import type { PixelShape } from '../types/editor';
 
-const SHAPE_COLOR: Record<PixelShape, string> = {
+export const SHAPE_COLOR: Record<PixelShape, string> = {
   square:   '#F5C518',
   circle:   '#E8651A',
   diamond:  '#E63946',
@@ -15,16 +15,45 @@ export interface BloomCell {
   shape: PixelShape;
   color: string;
   isLetterPixel: boolean;
-  above: boolean; // render above letter pixels?
-  aboveShape?: PixelShape; // if set, also render this shape on top of letter pixel
+  above: boolean;
+  aboveShape?: PixelShape;
   aboveColor?: string;
 }
 
 export type BloomGrid = BloomCell[][];
 
-export function seedFromCanvas(frame: CanvasFrame): BloomGrid {
+// Internal: one boolean layer per shape
+type ShapeLayer = boolean[][];
+type LayerMap = Partial<Record<PixelShape, ShapeLayer>>;
+
+export interface BloomState {
+  grid: BloomGrid;       // render grid (letter pixels + metadata)
+  layers: LayerMap;      // independent GoL layer per shape
+}
+
+function makeLayer(rows: number, cols: number): ShapeLayer {
+  return Array.from({ length: rows }, () => new Array(cols).fill(false));
+}
+
+function countNeighbors(layer: ShapeLayer, r: number, c: number): number {
+  const rows = layer.length;
+  const cols = layer[0].length;
+  let n = 0;
+  for (let dr = -1; dr <= 1; dr++) {
+    for (let dc = -1; dc <= 1; dc++) {
+      if (dr === 0 && dc === 0) continue;
+      const nr = r + dr, nc = c + dc;
+      if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && layer[nr][nc]) n++;
+    }
+  }
+  return n;
+}
+
+export function seedFromCanvas(frame: CanvasFrame): BloomState {
   const { gridHeight, gridWidth, pixels, pixelShapes, pixelShape } = frame;
-  return Array.from({ length: gridHeight }, (_, r) =>
+
+  // Build render grid (letter pixels only)
+  const grid: BloomGrid = Array.from({ length: gridHeight }, (_, r) =>
     Array.from({ length: gridWidth }, (_, c) => {
       if (pixels[r]?.[c]) {
         return {
@@ -38,83 +67,109 @@ export function seedFromCanvas(frame: CanvasFrame): BloomGrid {
       return { alive: false, shape: 'square' as PixelShape, color: '#1a1a1a', isLetterPixel: false, above: false };
     })
   );
+
+  // Detect which shapes are present
+  const presentShapes = new Set<PixelShape>();
+  for (let r = 0; r < gridHeight; r++)
+    for (let c = 0; c < gridWidth; c++)
+      if (pixels[r]?.[c]) presentShapes.add(pixelShapes?.[r]?.[c] ?? pixelShape);
+
+  // Seed each shape layer from letter pixel positions, distributed evenly
+  const layers: LayerMap = {};
+  const letterPixels: { r: number; c: number }[] = [];
+  for (let r = 0; r < gridHeight; r++)
+    for (let c = 0; c < gridWidth; c++)
+      if (pixels[r]?.[c]) letterPixels.push({ r, c });
+
+  const shapes = [...presentShapes];
+  for (const shape of shapes) layers[shape] = makeLayer(gridHeight, gridWidth);
+
+  const shuffled = [...letterPixels].sort(() => Math.random() - 0.5);
+  shuffled.forEach(({ r, c }, i) => {
+    const shape = shapes[i % shapes.length];
+    layers[shape]![r][c] = true;
+  });
+
+  return { grid, layers };
 }
 
-function countLiveNeighbors(grid: BloomGrid, r: number, c: number): { count: number; cells: BloomCell[] } {
+export function step(state: BloomState): BloomState {
+  const { grid, layers } = state;
   const rows = grid.length;
   const cols = grid[0].length;
-  const cells: BloomCell[] = [];
-  for (let dr = -1; dr <= 1; dr++) {
-    for (let dc = -1; dc <= 1; dc++) {
-      if (dr === 0 && dc === 0) continue;
-      const nr = r + dr;
-      const nc = c + dc;
-      if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && grid[nr][nc].alive) {
-        cells.push(grid[nr][nc]);
-      }
-    }
+  const shapes = Object.keys(layers) as PixelShape[];
+
+  // Step each shape layer independently (B3/S237)
+  const nextLayers: LayerMap = {};
+  for (const shape of shapes) {
+    const layer = layers[shape]!;
+    nextLayers[shape] = Array.from({ length: rows }, (_, r) =>
+      Array.from({ length: cols }, (_, c) => {
+        // Letter pixels always alive in their own layer
+        if (grid[r][c].isLetterPixel && grid[r][c].shape === shape) return true;
+        const n = countNeighbors(layer, r, c);
+        if (layer[r][c]) return n === 2 || n === 3 || n === 7;
+        return n === 3;
+      })
+    );
   }
-  return { count: cells.length, cells };
-}
 
-function inheritAppearance(neighbors: BloomCell[]): { shape: PixelShape; color: string } {
-  const shape = neighbors[Math.floor(Math.random() * neighbors.length)].shape;
-  const color = SHAPE_COLOR[shape];
-  return { shape, color };
-}
-
-export function step(grid: BloomGrid): BloomGrid {
-  const rows = grid.length;
-  const cols = grid[0].length;
-  return Array.from({ length: rows }, (_, r) =>
+  // Rebuild render grid from layers
+  const nextGrid: BloomGrid = Array.from({ length: rows }, (_, r) =>
     Array.from({ length: cols }, (_, c) => {
       const cell = grid[r][c];
+
       if (cell.isLetterPixel) {
-        const { count, cells } = countLiveNeighbors(grid, r, c);
-        if (count === 3 && Math.random() < 0.3) {
-          const { shape, color } = inheritAppearance(cells);
-          return { ...cell, aboveShape: shape, aboveColor: color };
+        // Check if any shape layer has a birth at this position → aboveShape
+        let aboveShape: PixelShape | undefined;
+        let aboveColor: string | undefined;
+        for (const shape of shapes) {
+          if (nextLayers[shape]![r][c] && grid[r][c].shape !== shape) {
+            if (Math.random() < 0.3) {
+              aboveShape = shape;
+              aboveColor = SHAPE_COLOR[shape];
+            }
+            break;
+          }
         }
-        // Fade out aboveShape over time randomly
-        if (cell.aboveShape && Math.random() < 0.1) {
+        // Fade existing aboveShape
+        if (!aboveShape && cell.aboveShape && Math.random() < 0.1) {
           return { ...cell, aboveShape: undefined, aboveColor: undefined };
         }
-        return cell;
+        return aboveShape ? { ...cell, aboveShape, aboveColor } : cell;
       }
-      const { count, cells } = countLiveNeighbors(grid, r, c);
-      if (cell.alive) {
-        const survives = count === 2 || count === 3 || count === 7;
-        return survives ? cell : { alive: false, shape: cell.shape, color: cell.color, isLetterPixel: false, above: cell.above };
-      } else {
-        if (count === 3) {
-          const { shape, color } = inheritAppearance(cells);
-          return { alive: true, shape, color, isLetterPixel: false, above: Math.random() < 0.3 };
-        }
-        return cell;
+
+      // Non-letter cell: any shape alive here renders (all overlap freely)
+      const aliveShapes = shapes.filter(s => nextLayers[s]![r][c]);
+      if (aliveShapes.length > 0) {
+        // Pick a random alive shape to represent this cell this frame
+        const shape = aliveShapes[Math.floor(Math.random() * aliveShapes.length)];
+        const above = cell.alive && cell.shape === shape ? cell.above : Math.random() < 0.3;
+        return { alive: true, shape, color: SHAPE_COLOR[shape], isLetterPixel: false, above };
       }
+      return { ...cell, alive: false };
     })
   );
+
+  return { grid: nextGrid, layers: nextLayers };
 }
 
-export function coverage(grid: BloomGrid): number {
-  const rows = grid.length;
-  const cols = grid[0].length;
+export function coverage(state: BloomState): number {
+  const { grid } = state;
+  const rows = grid.length, cols = grid[0].length;
   let alive = 0;
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
       if (grid[r][c].alive) alive++;
-    }
-  }
   return alive / (rows * cols);
 }
 
-export function countNonLetterAlive(grid: BloomGrid): number {
+export function countNonLetterAlive(state: BloomState): number {
   let count = 0;
-  for (let r = 0; r < grid.length; r++) {
-    for (let c = 0; c < grid[r].length; c++) {
-      const cell = grid[r][c];
+  for (let r = 0; r < state.grid.length; r++)
+    for (let c = 0; c < state.grid[r].length; c++) {
+      const cell = state.grid[r][c];
       if (cell.alive && !cell.isLetterPixel) count++;
     }
-  }
   return count;
 }

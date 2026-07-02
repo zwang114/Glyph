@@ -13,7 +13,7 @@ import {
   TRIANGLE_SVG_PATH,
   MUSHROOM_SVG_PATH,
   SQUARE_TONE_SVG_PATH,
-} from './PhysicsPanels';
+} from './shapePaths';
 
 interface ToolDrawerProps {
   panels: PanelDef[];
@@ -177,11 +177,12 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
 
     loopRef.current = setInterval(step, 1000 / 60);
 
+    const bodies = bodiesRef.current;
     return () => {
       if (loopRef.current !== null) clearInterval(loopRef.current);
       loopRef.current = null;
       Matter.Engine.clear(engine);
-      bodiesRef.current.clear();
+      bodies.clear();
     };
   }, [drawerWidth, containerHeight]);
 
@@ -241,7 +242,7 @@ export function ToolDrawer({ panels, containerWidth, containerHeight, onPanelDra
         panelElsRef.current.delete(id);
       }
     }
-  }, [panels, drawerWidth]);
+  }, [panels, drawerWidth, containerHeight, offset, dropPositions]);
 
   // React to drawer sliding — stronger force for natural feel
   useEffect(() => {

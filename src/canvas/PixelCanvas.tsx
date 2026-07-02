@@ -4,14 +4,15 @@ import { useEditorStore } from '../stores/editorStore';
 import { useAudioStore } from '../stores/audioStore';
 import { playPixel } from '../audio/audioEngine';
 import type { CanvasFrame } from '../types/canvas';
-import type { MirrorMode } from '../types/editor';
+import type { MirrorMode, PixelShape } from '../types/editor';
 import { drawShape } from '../engine/shapes';
 import {
   seedFromCanvas,
   step as bloomStep,
   coverage as bloomCoverage,
   countNonLetterAlive,
-  type BloomGrid,
+  SHAPE_COLOR,
+  type BloomState,
 } from '../bloom/bloomEngine';
 
 // ─────────────────────────────────────────────────────────────────────
@@ -78,7 +79,7 @@ export function PixelCanvas() {
   const rafRef = useRef<number>(0);
 
   // Bloom dev spike state
-  const bloomGridRef = useRef<BloomGrid | null>(null);
+  const bloomGridRef = useRef<BloomState | null>(null);
   const bloomRunningRef = useRef(false);
   const bloomPausedRef = useRef(false);
   const bloomRafRef = useRef(0);
@@ -156,22 +157,13 @@ export function PixelCanvas() {
   // Coordinate helpers
   // ───────────────────────────────────────────────────────────────────
 
-  /** Screen → world coords (invert viewport transform). */
-  const screenToWorld = useCallback((sx: number, sy: number) => {
-    const { viewport } = useCanvasStore.getState();
-    return {
-      x: (sx - viewport.x) / viewport.zoom,
-      y: (sy - viewport.y) / viewport.zoom,
-    };
-  }, []);
-
   /**
    * Per-frame cell size. A canvas frame's pixel cell is sized so the
    * *canvas itself* has a base display size that feels comfortable. We
    * use a fixed per-cell world-unit size so all canvases scale together
    * under the global viewport zoom.
    */
-  const getCellSize = useCallback((frame: CanvasFrame) => {
+  const getCellSize = useCallback(() => {
     // 1 cell = 16 world units. Viewport.zoom scales everything uniformly.
     const WORLD_CELL = 16;
     return WORLD_CELL * useCanvasStore.getState().viewport.zoom;
@@ -371,123 +363,6 @@ export function PixelCanvas() {
   // ───────────────────────────────────────────────────────────────────
   // Rendering
   // ───────────────────────────────────────────────────────────────────
-
-  const draw = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const {
-      canvases,
-      canvasOrder,
-      selectedCanvasId,
-      viewport,
-    } = useCanvasStore.getState();
-    const { showGrid, darkMode } = useEditorStore.getState();
-
-    const dpr = devicePixelRatio;
-    const canvasW = canvas.width / dpr;
-    const canvasH = canvas.height / dpr;
-
-    ctx.save();
-    ctx.scale(dpr, dpr);
-
-    // Fill workspace background
-    ctx.fillStyle = darkMode ? '#000000' : BG_COLOR;
-    ctx.fillRect(0, 0, canvasW, canvasH);
-
-    // Compute + cache frame bounds for hit-testing
-    const bounds: FrameBounds[] = [];
-    for (const id of canvasOrder) {
-      const frame = canvases[id];
-      if (!frame) continue;
-      const origin = getFrameOrigin(frame);
-      const cellSize = getCellSize(frame);
-      bounds.push({
-        id,
-        x: origin.x,
-        y: origin.y,
-        w: frame.gridWidth * cellSize,
-        h: frame.gridHeight * cellSize,
-        cellSize,
-      });
-    }
-    frameBoundsRef.current = bounds;
-
-    // Draw each canvas frame
-    for (let i = 0; i < canvasOrder.length; i++) {
-      const id = canvasOrder[i];
-      const frame = canvases[id];
-      if (!frame) continue;
-      const b = bounds[i];
-
-      const hasBloom = id === bloomTargetIdRef.current && bloomGridRef.current;
-
-      if (hasBloom) {
-        const grid = bloomGridRef.current!;
-
-        const drawBloomPass = (above: boolean) => {
-          ctx.save();
-          ctx.beginPath();
-          ctx.roundRect(b.x, b.y, b.w, b.h, 8);
-          ctx.clip();
-          for (let r = 0; r < grid.length; r++) {
-            for (let c = 0; c < grid[r].length; c++) {
-              const cell = grid[r][c];
-              if (!cell.alive) continue;
-              if (cell.isLetterPixel) {
-                // In above pass, draw bloom on top of letter pixels if flagged
-                if (above && cell.aboveShape && cell.aboveColor) {
-                  ctx.fillStyle = cell.aboveColor;
-                  drawShape(ctx, cell.aboveShape, r, c, b.cellSize, frame.pixelDensity, b.x, b.y);
-                }
-                continue;
-              }
-              if (cell.above !== above) continue;
-              ctx.fillStyle = cell.color;
-              drawShape(ctx, cell.shape, r, c, b.cellSize, frame.pixelDensity, b.x, b.y);
-            }
-          }
-          ctx.restore();
-        };
-
-        // Background fill
-        ctx.fillStyle = darkMode ? '#000000' : CANVAS_FILL_COLOR;
-        ctx.beginPath();
-        ctx.roundRect(b.x, b.y, b.w, b.h, CANVAS_CORNER_RADIUS);
-        ctx.fill();
-
-        // Below-letter bloom
-        drawBloomPass(false);
-
-        // Letter pixels
-        drawFrame(ctx, frame, b, id === selectedCanvasId, id === hoverCanvasIdRef.current, showGrid, true, darkMode);
-
-        // Above-letter bloom
-        drawBloomPass(true);
-      } else {
-        drawFrame(ctx, frame, b, id === selectedCanvasId, id === hoverCanvasIdRef.current, showGrid, false, darkMode);
-      }
-    }
-
-    // Draw ghost for duplicate-in-progress (under cursor)
-    const drag = draggingCanvasRef.current;
-    if (drag && drag.isDuplicate && drag.dupId) {
-      const frame = canvases[drag.dupId];
-      if (frame) {
-        const b = bounds.find((b) => b.id === drag.dupId);
-        if (b) {
-          ctx.save();
-          ctx.globalAlpha = 0.7;
-          // already drawn in the main loop — nothing extra needed
-          ctx.restore();
-        }
-      }
-    }
-
-    ctx.restore();
-  }, [getCellSize, getFrameOrigin]);
 
   /** Draw a single frame (fill, dots, pixels, hover preview, selection chrome). */
   const drawFrame = useCallback(
@@ -815,6 +690,119 @@ export function PixelCanvas() {
     [getBrushCells, getMirrorCells, getLineCells, getTabRect, getPlusButtons]
   );
 
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const {
+      canvases,
+      canvasOrder,
+      selectedCanvasId,
+    } = useCanvasStore.getState();
+    const { showGrid, darkMode } = useEditorStore.getState();
+
+    const dpr = devicePixelRatio;
+    const canvasW = canvas.width / dpr;
+    const canvasH = canvas.height / dpr;
+
+    ctx.save();
+    ctx.scale(dpr, dpr);
+
+    // Fill workspace background
+    ctx.fillStyle = darkMode ? '#000000' : BG_COLOR;
+    ctx.fillRect(0, 0, canvasW, canvasH);
+
+    // Compute + cache frame bounds for hit-testing
+    const bounds: FrameBounds[] = [];
+    for (const id of canvasOrder) {
+      const frame = canvases[id];
+      if (!frame) continue;
+      const origin = getFrameOrigin(frame);
+      const cellSize = getCellSize();
+      bounds.push({
+        id,
+        x: origin.x,
+        y: origin.y,
+        w: frame.gridWidth * cellSize,
+        h: frame.gridHeight * cellSize,
+        cellSize,
+      });
+    }
+    frameBoundsRef.current = bounds;
+
+    // Draw each canvas frame
+    for (let i = 0; i < canvasOrder.length; i++) {
+      const id = canvasOrder[i];
+      const frame = canvases[id];
+      if (!frame) continue;
+      const b = bounds[i];
+
+      const hasBloom = id === bloomTargetIdRef.current && bloomGridRef.current;
+
+      if (hasBloom) {
+        const { grid, layers } = bloomGridRef.current!;
+        const layerEntries = Object.entries(layers) as [PixelShape, boolean[][]][];
+
+        const drawLayerPass = (above: boolean) => {
+          ctx.save();
+          ctx.beginPath();
+          ctx.roundRect(b.x, b.y, b.w, b.h, 8);
+          ctx.clip();
+          // Each shape layer drawn fully — true overlap
+          for (const [shape, layer] of layerEntries) {
+            ctx.fillStyle = SHAPE_COLOR[shape];
+            for (let r = 0; r < layer.length; r++) {
+              for (let c = 0; c < layer[r].length; c++) {
+                if (!layer[r][c] || grid[r][c].isLetterPixel) continue;
+                // Randomly assign above/below per cell per frame for variety
+                const isAbove = (r * 31 + c * 17 + layer.length) % 3 === 0;
+                if (isAbove !== above) continue;
+                drawShape(ctx, shape, r, c, b.cellSize, frame.pixelDensity, b.x, b.y);
+              }
+            }
+          }
+          ctx.restore();
+        };
+
+        // Background fill
+        ctx.fillStyle = darkMode ? '#000000' : CANVAS_FILL_COLOR;
+        ctx.beginPath();
+        ctx.roundRect(b.x, b.y, b.w, b.h, CANVAS_CORNER_RADIUS);
+        ctx.fill();
+
+        // Below-letter bloom (all layers)
+        drawLayerPass(false);
+
+        // Letter pixels
+        drawFrame(ctx, frame, b, id === selectedCanvasId, id === hoverCanvasIdRef.current, showGrid, true, darkMode);
+
+        // Above-letter bloom (all layers)
+        drawLayerPass(true);
+      } else {
+        drawFrame(ctx, frame, b, id === selectedCanvasId, id === hoverCanvasIdRef.current, showGrid, false, darkMode);
+      }
+    }
+
+    // Draw ghost for duplicate-in-progress (under cursor)
+    const drag = draggingCanvasRef.current;
+    if (drag && drag.isDuplicate && drag.dupId) {
+      const frame = canvases[drag.dupId];
+      if (frame) {
+        const b = bounds.find((b) => b.id === drag.dupId);
+        if (b) {
+          ctx.save();
+          ctx.globalAlpha = 0.7;
+          // already drawn in the main loop — nothing extra needed
+          ctx.restore();
+        }
+      }
+    }
+
+    ctx.restore();
+  }, [getCellSize, getFrameOrigin, drawFrame]);
+
   const runBloom = useCallback(() => {
     if (bloomRunningRef.current && !bloomPausedRef.current) {
       // Running → pause
@@ -849,12 +837,12 @@ export function PixelCanvas() {
       if (bloomPausedRef.current) { bloomRafRef.current = requestAnimationFrame(tick); return; }
 
       if (now - lastStepTime >= STEP_INTERVAL) {
-        const nextGrid = bloomStep(bloomGridRef.current!);
-        bloomGridRef.current = nextGrid;
+        const nextState = bloomStep(bloomGridRef.current!);
+        bloomGridRef.current = nextState;
         generation++;
         lastStepTime = now;
 
-        const nextNonLetterAlive = countNonLetterAlive(nextGrid);
+        const nextNonLetterAlive = countNonLetterAlive(nextState);
         if (nextNonLetterAlive === prevNonLetterAlive) {
           consecutiveSteadyGens++;
         } else {
@@ -866,7 +854,7 @@ export function PixelCanvas() {
 
         if (
           consecutiveSteadyGens >= 10 ||
-          bloomCoverage(nextGrid) >= 0.5 ||
+          bloomCoverage(nextState) >= 0.5 ||
           generation >= 500
         ) {
           bloomRunningRef.current = false;
@@ -971,7 +959,13 @@ export function PixelCanvas() {
       // Only call draw() when there is something new to show.
       if (dirtyRef.current || anyFlash || isPlaying) {
         dirtyRef.current = false;
-        draw();
+        try {
+          draw();
+        } catch (err) {
+          // A draw failure must not wedge the rAF loop into redrawing the
+          // same broken state every frame. Log once per occurrence.
+          console.error('PixelCanvas draw failed:', err);
+        }
       }
     };
 

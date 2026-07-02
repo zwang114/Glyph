@@ -10,7 +10,9 @@ export function PreviewView() {
   const glyphs = useCompatGlyphs();
   const { shape: pixelShape, density: pixelDensity } = useCompatRenderStyle();
   const [text, setText] = useState('HELLO WORLD');
-  const [fontUrl, setFontUrl] = useState<string | null>(null);
+  // url + generation id live together in state so render never reads a ref —
+  // the id makes each @font-face family name unique, forcing a font reload.
+  const [font, setFont] = useState<{ url: string; id: number } | null>(null);
   const prevUrlRef = useRef<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fontIdRef = useRef(0);
@@ -19,11 +21,10 @@ export function PreviewView() {
     g.pixels.some((row) => row.some(Boolean))
   ).length;
 
+  // When there are no glyphs the preview falls back to monospace; the stale
+  // `font` state is simply ignored (derived below) rather than cleared here.
   useEffect(() => {
-    if (glyphCount === 0) {
-      setFontUrl(null);
-      return;
-    }
+    if (glyphCount === 0) return;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
@@ -32,9 +33,9 @@ export function PreviewView() {
         if (prevUrlRef.current) URL.revokeObjectURL(prevUrlRef.current);
         prevUrlRef.current = url;
         fontIdRef.current++;
-        setFontUrl(url);
+        setFont({ url, id: fontIdRef.current });
       } catch {
-        setFontUrl(null);
+        setFont(null);
       }
     }, 300);
 
@@ -47,23 +48,25 @@ export function PreviewView() {
     };
   }, [project, glyphs, glyphCount, pixelShape, pixelDensity]);
 
+  const activeFont = glyphCount > 0 ? font : null;
+
   useEffect(() => {
-    if (!fontUrl) return;
+    if (!activeFont) return;
     // Use a unique family name per regeneration to force browser to reload
-    const familyName = `GlyphStudioPreview${fontIdRef.current}`;
+    const familyName = `GlyphStudioPreview${activeFont.id}`;
     const style = document.createElement('style');
     style.textContent = `
       @font-face {
         font-family: '${familyName}';
-        src: url('${fontUrl}') format('opentype');
+        src: url('${activeFont.url}') format('opentype');
       }
     `;
     document.head.appendChild(style);
     return () => { document.head.removeChild(style); };
-  }, [fontUrl]);
+  }, [activeFont]);
 
-  const fontFamily = fontUrl
-    ? `'GlyphStudioPreview${fontIdRef.current}', monospace`
+  const fontFamily = activeFont
+    ? `'GlyphStudioPreview${activeFont.id}', monospace`
     : 'monospace';
 
   return (

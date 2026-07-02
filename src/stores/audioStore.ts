@@ -154,9 +154,10 @@ export const useAudioStore = create<AudioState & AudioActions>()(
     {
       name: 'glyph-studio-audio',
       version: 2,
-      // Sound profile is derived from mushroom snap state at runtime — never persist it.
-      // On reload, nothing is snapped, so we always start in 'default'.
-      partialize: () => ({}),
+      // Persist the user's tempo + loop preference. Sound profile is derived
+      // from connector snap state at runtime — never persist it. On reload,
+      // nothing is snapped, so we always start in 'default'.
+      partialize: (state) => ({ bpm: state.bpm, isLooping: state.isLooping }),
       onRehydrateStorage: () => (state) => {
         if (state) {
           state.soundProfile = 'default';

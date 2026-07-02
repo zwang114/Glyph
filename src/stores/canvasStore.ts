@@ -172,7 +172,8 @@ export const useCanvasStore = create<CanvasStore>()(
       deleteCanvas: (id) =>
         set((s) => {
           if (!s.canvases[id]) return s;
-          const { [id]: _removed, ...rest } = s.canvases;
+          const rest = { ...s.canvases };
+          delete rest[id];
           const order = s.canvasOrder.filter((x) => x !== id);
           const nextSelected =
             s.selectedCanvasId === id ? null : s.selectedCanvasId;

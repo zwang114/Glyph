@@ -27,7 +27,6 @@ const BTN_SIZE = 38;
 const DIAL_SIZE = 80;
 const DIAL_LEFT = (SELECTOR_W - DIAL_SIZE) / 2; // 47
 const DIAL_TOP = 0;
-const DIAL_CX = DIAL_LEFT + DIAL_SIZE / 2; // 87
 const DIAL_CY = DIAL_TOP + DIAL_SIZE / 2;  // 40
 
 // Two snap positions: ON at angle 180° (pointing left), OFF at 0° (pointing right).

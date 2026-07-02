@@ -44,10 +44,9 @@ export function WorkspaceView() {
   const toggleDarkMode = useEditorStore((s) => s.toggleDarkMode);
   // Forest tone / sound profile is driven by whether the connector mushroom
   // is snapped onto the pixel-shape panel. When the user plugs the mushroom
-  // in → forest tones; pull it out → default tones. We read the toggle action
-  // here; the current profile is read inline (via getState) inside the snap
-  // callback so this component doesn't re-render on every profile flip.
-  const toggleSoundProfile = useAudioStore((s) => s.toggleSoundProfile);
+  // in → forest tones; pull it out → default tones. The current profile is
+  // read inline (via getState) inside the snap callback so this component
+  // doesn't re-render on every profile flip.
   const setProfileById = useAudioStore((s) => s.setProfileById);
 
   // ── Canvas state (selection + per-canvas properties) ────────────────
@@ -63,7 +62,6 @@ export function WorkspaceView() {
   const setOnionSkinFont = useCanvasStore((s) => s.setOnionSkinFont);
   const setOnionSkinSize = useCanvasStore((s) => s.setOnionSkinSize);
   const setCanvasMuted = useCanvasStore((s) => s.setCanvasMuted);
-  const resizeCanvas = useCanvasStore((s) => s.resizeCanvas);
   const assignLetter = useCanvasStore((s) => s.assignLetter);
   const canvases = useCanvasStore((s) => s.canvases);
 
@@ -211,21 +209,6 @@ export function WorkspaceView() {
     },
     [selectedCanvasId, setCanvasMuted]
   );
-
-  // ── Canvas W/H inputs ───────────────────────────────────────────────
-  const [wInput, setWInput] = useState(target?.gridWidth ?? 24);
-  const [hInput, setHInput] = useState(target?.gridHeight ?? 32);
-  useEffect(() => {
-    if (target) {
-      setWInput(target.gridWidth);
-      setHInput(target.gridHeight);
-    }
-  }, [target?.gridWidth, target?.gridHeight]);
-  const applyCanvasSize = useCallback(() => {
-    if (selectedCanvasId && target && (wInput !== target.gridWidth || hInput !== target.gridHeight)) {
-      resizeCanvas(selectedCanvasId, Math.max(4, wInput), Math.max(4, hInput));
-    }
-  }, [selectedCanvasId, target, wInput, hInput, resizeCanvas]);
 
   // ── Container size tracking for physics panels ──────────────────────
   useEffect(() => {

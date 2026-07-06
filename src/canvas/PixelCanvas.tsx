@@ -4,16 +4,8 @@ import { useEditorStore } from '../stores/editorStore';
 import { useAudioStore } from '../stores/audioStore';
 import { playPixel } from '../audio/audioEngine';
 import type { CanvasFrame } from '../types/canvas';
-import type { MirrorMode, PixelShape } from '../types/editor';
+import type { MirrorMode } from '../types/editor';
 import { drawShape } from '../engine/shapes';
-import {
-  seedFromCanvas,
-  step as bloomStep,
-  coverage as bloomCoverage,
-  countNonLetterAlive,
-  SHAPE_COLOR,
-  type BloomState,
-} from '../bloom/bloomEngine';
 
 // ─────────────────────────────────────────────────────────────────────
 // Visual constants
@@ -77,13 +69,6 @@ export function PixelCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number>(0);
-
-  // Bloom dev spike state
-  const bloomGridRef = useRef<BloomState | null>(null);
-  const bloomRunningRef = useRef(false);
-  const bloomPausedRef = useRef(false);
-  const bloomRafRef = useRef(0);
-  const bloomTargetIdRef = useRef<string | null>(null);
 
   // Drawing state (per pointer-down interaction)
   const drawingRef = useRef(false);
@@ -738,50 +723,7 @@ export function PixelCanvas() {
       if (!frame) continue;
       const b = bounds[i];
 
-      const hasBloom = id === bloomTargetIdRef.current && bloomGridRef.current;
-
-      if (hasBloom) {
-        const { grid, layers } = bloomGridRef.current!;
-        const layerEntries = Object.entries(layers) as [PixelShape, boolean[][]][];
-
-        const drawLayerPass = (above: boolean) => {
-          ctx.save();
-          ctx.beginPath();
-          ctx.roundRect(b.x, b.y, b.w, b.h, 8);
-          ctx.clip();
-          // Each shape layer drawn fully — true overlap
-          for (const [shape, layer] of layerEntries) {
-            ctx.fillStyle = SHAPE_COLOR[shape];
-            for (let r = 0; r < layer.length; r++) {
-              for (let c = 0; c < layer[r].length; c++) {
-                if (!layer[r][c] || grid[r][c].isLetterPixel) continue;
-                // Randomly assign above/below per cell per frame for variety
-                const isAbove = (r * 31 + c * 17 + layer.length) % 3 === 0;
-                if (isAbove !== above) continue;
-                drawShape(ctx, shape, r, c, b.cellSize, frame.pixelDensity, b.x, b.y);
-              }
-            }
-          }
-          ctx.restore();
-        };
-
-        // Background fill
-        ctx.fillStyle = darkMode ? '#000000' : CANVAS_FILL_COLOR;
-        ctx.beginPath();
-        ctx.roundRect(b.x, b.y, b.w, b.h, CANVAS_CORNER_RADIUS);
-        ctx.fill();
-
-        // Below-letter bloom (all layers)
-        drawLayerPass(false);
-
-        // Letter pixels
-        drawFrame(ctx, frame, b, id === selectedCanvasId, id === hoverCanvasIdRef.current, showGrid, true, darkMode);
-
-        // Above-letter bloom (all layers)
-        drawLayerPass(true);
-      } else {
-        drawFrame(ctx, frame, b, id === selectedCanvasId, id === hoverCanvasIdRef.current, showGrid, false, darkMode);
-      }
+      drawFrame(ctx, frame, b, id === selectedCanvasId, id === hoverCanvasIdRef.current, showGrid, false, darkMode);
     }
 
     // Draw ghost for duplicate-in-progress (under cursor)
@@ -801,71 +743,6 @@ export function PixelCanvas() {
 
     ctx.restore();
   }, [getCellSize, getFrameOrigin, drawFrame]);
-
-  const runBloom = useCallback(() => {
-    if (bloomRunningRef.current && !bloomPausedRef.current) {
-      // Running → pause
-      bloomPausedRef.current = true;
-      return;
-    }
-    if (bloomPausedRef.current) {
-      // Paused → restart fresh
-      bloomRunningRef.current = false;
-      bloomPausedRef.current = false;
-      cancelAnimationFrame(bloomRafRef.current);
-      bloomGridRef.current = null;
-      bloomTargetIdRef.current = null;
-    }
-    const { canvases, selectedCanvasId, lastSelectedCanvasId } = useCanvasStore.getState();
-    const targetId = selectedCanvasId ?? lastSelectedCanvasId;
-    const frame = targetId ? canvases[targetId] : null;
-    if (!frame) return;
-
-    bloomTargetIdRef.current = targetId;
-    bloomGridRef.current = seedFromCanvas(frame);
-    bloomRunningRef.current = true;
-
-    let lastStepTime = 0;
-    let generation = 0;
-    let consecutiveSteadyGens = 0;
-    let prevNonLetterAlive = 0;
-    const STEP_INTERVAL = 150;
-
-    const tick = (now: number) => {
-      if (!bloomRunningRef.current) return;
-      if (bloomPausedRef.current) { bloomRafRef.current = requestAnimationFrame(tick); return; }
-
-      if (now - lastStepTime >= STEP_INTERVAL) {
-        const nextState = bloomStep(bloomGridRef.current!);
-        bloomGridRef.current = nextState;
-        generation++;
-        lastStepTime = now;
-
-        const nextNonLetterAlive = countNonLetterAlive(nextState);
-        if (nextNonLetterAlive === prevNonLetterAlive) {
-          consecutiveSteadyGens++;
-        } else {
-          consecutiveSteadyGens = 0;
-        }
-        prevNonLetterAlive = nextNonLetterAlive;
-
-        dirtyRef.current = true;
-
-        if (
-          consecutiveSteadyGens >= 10 ||
-          bloomCoverage(nextState) >= 0.5 ||
-          generation >= 500
-        ) {
-          bloomRunningRef.current = false;
-          return;
-        }
-      }
-
-      bloomRafRef.current = requestAnimationFrame(tick);
-    };
-
-    bloomRafRef.current = requestAnimationFrame(tick);
-  }, []);
 
   // Mark the canvas as needing a redraw. The unified rAF loop picks it up.
   const scheduleRedraw = useCallback(() => {
@@ -975,8 +852,6 @@ export function PixelCanvas() {
       unsub1(); unsub2(); unsub3(); unsub4();
       cancelAnimationFrame(rafRef.current);
       rafRef.current = 0;
-      cancelAnimationFrame(bloomRafRef.current);
-      bloomRunningRef.current = false;
     };
   }, [draw]);
 
@@ -1623,26 +1498,6 @@ export function PixelCanvas() {
         onPointerCancel={handlePointerCancel}
         onContextMenu={(e) => e.preventDefault()}
       />
-      <button
-        type="button"
-        onClick={runBloom}
-        style={{
-          position: 'fixed',
-          top: 16,
-          right: 16,
-          zIndex: 9999,
-          padding: '8px 16px',
-          background: '#FF3B6F',
-          color: '#fff',
-          border: 'none',
-          borderRadius: 4,
-          cursor: 'pointer',
-          fontFamily: 'monospace',
-          fontSize: 13,
-        }}
-      >
-        Bloom (dev)
-      </button>
       {canvasCount === 0 && (
         <button
           type="button"
